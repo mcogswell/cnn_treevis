@@ -1,0 +1,9 @@
+## General
+# Compiled python
+*.pyc
+
+# Editor temporaries
+*.swp
+*~
+
+data/
