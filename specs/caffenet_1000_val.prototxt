@@ -1,5 +1,4 @@
 name: "CaffeNet"
-force_backward: true
 layer {
   name: "data"
   type: "Data"
@@ -22,12 +21,10 @@ layer {
   bottom: "data"
   top: "conv1"
   param {
-    name: "conv1_w"
     lr_mult: 1
     decay_mult: 1
   }
   param {
-    name: "conv1_b"
     lr_mult: 2
     decay_mult: 0
   }
@@ -79,12 +76,10 @@ layer {
   bottom: "norm1"
   top: "conv2"
   param {
-    name: "conv2_w"
     lr_mult: 1
     decay_mult: 1
   }
   param {
-    name: "conv2_b"
     lr_mult: 2
     decay_mult: 0
   }
@@ -137,12 +132,10 @@ layer {
   bottom: "norm2"
   top: "conv3"
   param {
-    name: "conv3_w"
     lr_mult: 1
     decay_mult: 1
   }
   param {
-    name: "conv3_b"
     lr_mult: 2
     decay_mult: 0
   }
@@ -172,12 +165,10 @@ layer {
   bottom: "conv3"
   top: "conv4"
   param {
-    name: "conv4_w"
     lr_mult: 1
     decay_mult: 1
   }
   param {
-    name: "conv4_b"
     lr_mult: 2
     decay_mult: 0
   }
@@ -208,12 +199,10 @@ layer {
   bottom: "conv4"
   top: "conv5"
   param {
-    name: "conv5_w"
     lr_mult: 1
     decay_mult: 1
   }
   param {
-    name: "conv5_b"
     lr_mult: 2
     decay_mult: 0
   }
@@ -370,33 +359,4 @@ layer {
   bottom: "fc8"
   bottom: "label"
   top: "loss"
-}
-
-layer {
-  name: "up_conv1"
-  type: "Deconvolution"
-  bottom: "conv1"
-  top: "up_conv1"
-  param {
-    name: "conv1_w"
-    lr_mult: 1
-    decay_mult: 1
-  }
-  param {
-    lr_mult: 2
-    decay_mult: 0
-  }
-  convolution_param {
-    num_output: 3
-    kernel_size: 11
-    stride: 4
-    weight_filler {
-      type: "gaussian"
-      std: 0.01
-    }
-    bias_filler {
-      type: "constant"
-      value: 0
-    }
-  }
 }
