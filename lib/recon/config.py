@@ -1,6 +1,8 @@
 from easydict import EasyDict as edict
 
 config = edict({
+# 50 GB
+'lmdb_map_size': 50 * (1024**3),
 'nets': {
     'caffenet_1000': {
         'max_activation_dbname': 'data/caffenet_1000_max_act_lmdb',

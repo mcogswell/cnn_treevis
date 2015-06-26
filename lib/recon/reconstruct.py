@@ -60,7 +60,7 @@ class Reconstructor(object):
     def __init__(self, net_id):
         self.net_id = net_id
         self.config = config.nets[self.net_id]
-        self.act_env = lmdb.open(self.config.max_activation_dbname)
+        self.act_env = lmdb.open(self.config.max_activation_dbname, map_size=config.lmdb_map_size)
         self.mean = load_mean_image(self.config.mean_fname)
         self.net_param = self._load_param()
 
@@ -187,6 +187,12 @@ class Reconstructor(object):
                         top_k = top_k[1:]
 
             example_offset += batch_size
+
+        print('finished computing maximum activations... writing to db')
+        with self.act_env.begin(write=True) as txn:
+            for key, top_k in maxes.iteritems():
+                s = pkl.dumps(top_k)
+                txn.put(key, s)
 
 
 
