@@ -8,6 +8,7 @@ from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
+import skimage.io as io
 
 import lmdb
 
@@ -17,14 +18,9 @@ import google.protobuf.text_format as text_format
 
 from cogswell import keyboard
 
-import recon.config as config_mod
-from recon.config import config
+from recon.config import config, relu_backward_types
 from recon.util import load_mean_image
 
-
-
-backprop_types = dict(zip(cpb.ReLUParameter.BackpropType.keys(),
-                          cpb.ReLUParameter.BackpropType.values()))
 
 # main api calls
 
@@ -38,10 +34,10 @@ def canonical_image(net_id, blob_name, feature_idx, k):
 class Reconstructor(object):
 
     @staticmethod
-    def _convert_relus(in_param, relu_type='DECONV'):
+    def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
         '''
-        Takes a NetParameter and returns a new NetParameter with ReLUs
-        that have the specified backward pass.
+        Return a new NetParameter with ReLUs suited for visualization
+        and a setup to always force backprop.
         '''
         net_param = cpb.NetParameter()
         net_param.CopyFrom(in_param)
@@ -53,14 +49,18 @@ class Reconstructor(object):
         # set relu backprop type and generate temp net
         for layer in net_param.layer:
             if layer.type == 'ReLU':
-                layer.relu_param.backprop_type = backprop_types[relu_type]
+                layer.relu_param.backprop_type = relu_type
+
+        # otherwise, backprop might not reach the image blob
+        net_param.force_backward = True
 
         return net_param
 
     def __init__(self, net_id):
         self.net_id = net_id
         self.config = config.nets[self.net_id]
-        self.act_env = lmdb.open(self.config.max_activation_dbname, map_size=config.lmdb_map_size)
+        self.act_env = lmdb.open(self.config.max_activation_dbname, 
+                                 map_size=config.lmdb_map_size)
         self.mean = load_mean_image(self.config.mean_fname)
         self.net_param = self._load_param()
 
@@ -80,7 +80,7 @@ class Reconstructor(object):
         contains the modified spec with ReLUs appropriate for visualization.
         '''
         # TODO: also accept file objects instead of just names?
-        net_param = Reconstructor._convert_relus(net_param)
+        net_param = Reconstructor._convert_relus(net_param, relu_type=self.config.relu_type)
 
         tmpspec = tempfile.NamedTemporaryFile(delete=False)
         with tmpspec as f:
@@ -88,25 +88,6 @@ class Reconstructor(object):
         tmpspec.close()
 
         return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
-
-    '''
-    def canonical_image(self, blob_name, feature_idx, k):
-        with self.act_env.begin() as txn:
-            act_key = self.act_key(blob_name, feature_idx)
-            activations = json.loads(db.get(act_key))
-        img_keys, locations = zip(*activations)
-        vis_dict = self.vis(blob_name,
-                            feature_idx,
-                            img_keys=img_keys,
-                            locations=locations,
-                            context_patches=True)
-        vis_patches = vis_dict['vis_patches']
-        context_patches = vis_dict['context_patches']
-
-        self.net.forward(end=layer_name)
-        # concatenate into a batch with k images
-        # set net input
-    '''
 
     def _get_blob_layer(self, net_param, blob_name):
         '''
@@ -131,6 +112,22 @@ class Reconstructor(object):
         img = img.clip(0, 255).astype(np.uint8)
         return img
 
+    def _to_bbox(self, img):
+        '''
+        Take an image which is mostly 0s and return the smallest
+        bounding box which contains all non-0 entries.
+
+        img     array of size (c, h, w)
+        '''
+        m = abs(img).max(axis=0)
+        linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
+        linear_idxs = linear_idx_map[m > 0]
+        rows = (linear_idxs // m.shape[0])
+        cols = (linear_idxs % m.shape[0])
+        top_left = (rows.min(), cols.min())
+        bottom_right = (rows.max(), cols.max())
+        return (top_left, bottom_right)
+
     def _reconstruct_backward(self, net, net_param, blob_name, blob_idx):
         blob = net.blobs[blob_name]
         blob.diff[:] = 0
@@ -142,12 +139,14 @@ class Reconstructor(object):
         # don't use self.net, which a deploy net (data comes from python)
         data_net_param = self._load_param(with_data=True)
         net = self._load_net(data_net_param)
-        self.img_layer_name = self._get_blob_layer(data_net_param, self.config.img_blob_name)
+        self.img_layer_name = self._get_blob_layer(data_net_param, 
+                                                   self.config.img_blob_name)
         batch_size = self.config.batch_size
         n_batches = int(math.ceil(self.config.num_examples / float(batch_size)))
         example_offset = 0
         # accumulate this over all batches
         # maxes[key]
+        # TODO: load the top_k lists from the db and append to them if they already exist
         maxes = defaultdict(lambda: [{'activation': -np.inf} for _ in range(k)])
 
         for batch_i in xrange(n_batches):
@@ -173,18 +172,26 @@ class Reconstructor(object):
 
                     if act > top_k[0]['activation']:
                         img = img_blob.data[num, :, :, :]
-                        self._reconstruct_backward(net, data_net_param, blob_name, blob_idx)
-                        reconstruction = img_blob.diff[num, :, :, :]
+                        self._reconstruct_backward(net, 
+                                                   data_net_param, 
+                                                   blob_name, 
+                                                   blob_idx)
+                        # TODO: instead of mult, use a fixed value, perhaps the 
+                        # max over activations in the dataset
+                        mult = self.config['blob_multipliers'][blob_name]
+                        reconstruction = mult * img_blob.diff[num, :, :, :]
+                        bbox = self._to_bbox(reconstruction)
                         entry = {
                             'example_idx': example_offset + num,
                             'feature_map_loc': (height, width),
                             'img': self._showable(img),
                             'reconstruction': self._showable(reconstruction),
                             'activation': act,
+                            'patch_bbox': bbox,
                         }
                         top_k_idx = bisect([v['activation'] for v in top_k], act)
                         top_k.insert(top_k_idx, entry)
-                        top_k = top_k[1:]
+                        del top_k[0]
 
             example_offset += batch_size
 
@@ -193,6 +200,39 @@ class Reconstructor(object):
             for key, top_k in maxes.iteritems():
                 s = pkl.dumps(top_k)
                 txn.put(key, s)
+
+    def canonical_image(self, blob_name, feature_idx, k, tmp_fname):
+        act_key = self._get_key(blob_name, feature_idx)
+        with self.act_env.begin() as txn:
+            val = txn.get(act_key)
+            if val == None:
+                raise Exception('activation for key {} not yet stored'.format(act_key))
+            activations = pkl.loads(val) #[-k:]
+        rec = activations[-1]['reconstruction']
+        top_left, bottom_right = activations[-1]['patch_bbox']
+        top, left, bottom, right = top_left + bottom_right
+        #mean = rec.mean()
+        #rec -= mean
+        #rec /= float(rec.max())
+        #rec *= 128
+        #rec += mean
+        rec = (1.3 * rec).clip(0, 255).astype(np.uint8)
+        rec = rec[top:bottom+1, left:right+1]
+        io.imsave(tmp_fname, rec)
+        #keyboard('hi')
+        return None
+        img_keys, locations = zip(*activations)
+        vis_dict = self.vis(blob_name,
+                            feature_idx,
+                            img_keys=img_keys,
+                            locations=locations,
+                            context_patches=True)
+        vis_patches = vis_dict['vis_patches']
+        context_patches = vis_dict['context_patches']
+
+        self.net.forward(end=layer_name)
+        # concatenate into a batch with k images
+        # set net input
 
 
 
