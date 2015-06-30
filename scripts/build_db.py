@@ -2,6 +2,7 @@
 import caffe
 
 from recon import Reconstructor
+from recon import util
 
 def main():
     '''
@@ -22,6 +23,8 @@ def main():
     else:
         caffe.set_mode_gpu()
         caffe.set_device(gpu_id)
+
+    util.setup_logging('{}_{}'.format(net_id, '_'.join(blob_names)))
 
     recon = Reconstructor(net_id)
     recon.build_max_act_db(blob_names)
