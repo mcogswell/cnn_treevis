@@ -21,6 +21,8 @@ from cogswell import keyboard
 from recon.config import config, relu_backward_types
 from recon.util import load_mean_image
 
+import logging
+logger = logging.getLogger(config.logger.name)
 
 # main api calls
 
@@ -112,7 +114,7 @@ class Reconstructor(object):
         img = img.clip(0, 255).astype(np.uint8)
         return img
 
-    def _to_bbox(self, img):
+    def _to_bbox(self, img, row, col):
         '''
         Take an image which is mostly 0s and return the smallest
         bounding box which contains all non-0 entries.
@@ -124,8 +126,12 @@ class Reconstructor(object):
         linear_idxs = linear_idx_map[m > 0]
         rows = (linear_idxs // m.shape[0])
         cols = (linear_idxs % m.shape[0])
-        top_left = (rows.min(), cols.min())
-        bottom_right = (rows.max(), cols.max())
+        if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
+            top_left = row, col
+            bottom_right = row, col
+        else:
+            top_left = (rows.min(), cols.min())
+            bottom_right = (rows.max(), cols.max())
         return (top_left, bottom_right)
 
     def _reconstruct_backward(self, net, net_param, blob_name, blob_idx):
@@ -151,22 +157,23 @@ class Reconstructor(object):
 
         for batch_i in xrange(n_batches):
             net.forward()
-            print('batch {}'.format(batch_i))
+            logger.info('batch {}'.format(batch_i))
 
             for blob_name in blob_names:
                 img_blob = net.blobs[self.config.img_blob_name]
                 blob = net.blobs[blob_name]
                 assert blob.data.shape[0] == batch_size
                 n_features = blob.data.shape[1]
-                print('blob {}'.format(blob_name))
+                logger.info('blob {}'.format(blob_name))
 
-                for chan in xrange(n_features): # channel
+                for num in xrange(batch_size): # examples
+                  logger.info('example {}'.format(example_offset + num))
+                  for chan in xrange(n_features): # channel
                     key = self._get_key(blob_name, chan)
                     # highest at the right
                     top_k = maxes[key]
-                    flat_idx = blob.data[:, chan, :, :].argmax()
-                    num, height, width = np.unravel_index(flat_idx,
-                                            (batch_size,)+blob.data.shape[2:])
+                    flat_idx = blob.data[num, chan, :, :].argmax()
+                    height, width = np.unravel_index(flat_idx, blob.data.shape[2:])
                     blob_idx = (num, chan, height, width)
                     act = blob.data[blob_idx]
 
@@ -180,7 +187,7 @@ class Reconstructor(object):
                         # max over activations in the dataset
                         mult = self.config['blob_multipliers'][blob_name]
                         reconstruction = mult * img_blob.diff[num, :, :, :]
-                        bbox = self._to_bbox(reconstruction)
+                        bbox = self._to_bbox(reconstruction, height, width)
                         entry = {
                             'example_idx': example_offset + num,
                             'feature_map_loc': (height, width),
@@ -195,7 +202,7 @@ class Reconstructor(object):
 
             example_offset += batch_size
 
-        print('finished computing maximum activations... writing to db')
+        logger.info('finished computing maximum activations... writing to db')
         with self.act_env.begin(write=True) as txn:
             for key, top_k in maxes.iteritems():
                 s = pkl.dumps(top_k)
@@ -208,17 +215,36 @@ class Reconstructor(object):
             if val == None:
                 raise Exception('activation for key {} not yet stored'.format(act_key))
             activations = pkl.loads(val) #[-k:]
-        rec = activations[-1]['reconstruction']
-        top_left, bottom_right = activations[-1]['patch_bbox']
-        top, left, bottom, right = top_left + bottom_right
-        #mean = rec.mean()
-        #rec -= mean
-        #rec /= float(rec.max())
-        #rec *= 128
-        #rec += mean
-        rec = (1.3 * rec).clip(0, 255).astype(np.uint8)
-        rec = rec[top:bottom+1, left:right+1]
-        io.imsave(tmp_fname, rec)
+        for i, act in enumerate(activations):
+            rec = act['reconstruction']
+            img = act['img']
+            top_left, bottom_right = act['patch_bbox']
+            top, left, bottom, right = top_left + bottom_right
+            #mean = rec.mean()
+            #rec -= mean
+            #rec /= float(rec.max())
+            #rec *= 128
+            #rec += mean
+            #rec = (1.3 * rec).clip(0, 255).astype(np.uint8)
+            img = img[top:bottom+1, left:right+1]
+            rec = rec[top:bottom+1, left:right+1]
+            plt.axis('off')
+            plt.subplot(2, 5, i+1)
+            plt.imshow(img)
+            plt.subplot(2, 5, 5+i+1)
+            '''
+                def _showable(self, img):
+                    # TODO: don't always assume images in the net are BGR
+                    img = img.transpose([1, 2, 0])
+                    img = (img + self.mean)[:, :, ::-1]
+                    img = img.clip(0, 255).astype(np.uint8)
+                    return img
+            '''
+            #mod = (img + (rec - self.mean[:, :, ::-1])).astype(np.uint8)
+            plt.imshow(rec)
+            plt.savefig(tmp_fname)
+
+        #io.imsave(tmp_fname, rec)
         #keyboard('hi')
         return None
         img_keys, locations = zip(*activations)
