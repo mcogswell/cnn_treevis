@@ -176,6 +176,7 @@ class Reconstructor(object):
                     height, width = np.unravel_index(flat_idx, blob.data.shape[2:])
                     blob_idx = (num, chan, height, width)
                     act = blob.data[blob_idx]
+                    assert act == blob.data[num, chan, height, width]
 
                     if act > top_k[0]['activation']:
                         img = img_blob.data[num, :, :, :]
@@ -214,7 +215,7 @@ class Reconstructor(object):
             val = txn.get(act_key)
             if val == None:
                 raise Exception('activation for key {} not yet stored'.format(act_key))
-            activations = pkl.loads(val) #[-k:]
+            activations = pkl.loads(val)[-k:]
         for i, act in enumerate(activations):
             rec = act['reconstruction']
             img = act['img']
@@ -229,9 +230,9 @@ class Reconstructor(object):
             img = img[top:bottom+1, left:right+1]
             rec = rec[top:bottom+1, left:right+1]
             plt.axis('off')
-            plt.subplot(2, 5, i+1)
+            plt.subplot(2, k, i+1)
             plt.imshow(img)
-            plt.subplot(2, 5, 5+i+1)
+            plt.subplot(2, k, k+i+1)
             '''
                 def _showable(self, img):
                     # TODO: don't always assume images in the net are BGR
@@ -261,65 +262,27 @@ class Reconstructor(object):
         # set net input
 
 
+    def reconstruct(self, blob_name):
+        data_net_param = self._load_param(with_data=True)
+        net = self._load_net(data_net_param)
+        self.img_layer_name = self._get_blob_layer(data_net_param, 
+                                                   self.config.img_blob_name)
+        net.forward()
+        img_blob = net.blobs[self.config.img_blob_name]
+        blob = net.blobs[blob_name]
 
+        num = blob.data.shape[0]
+        max_idxs = []
+        for n in xrange(num):
+            flat_idx = blob.data[n].argmax()
+            idx = np.unravel_index(flat_idx, blob.data.shape[1:])
+            blob.diff[n][idx] = blob.data[n][idx]
+            max_idxs.append(idx)
 
-def reconstruct(spec, model_params, layer_name, dirname, relu_type='DECONV'):
-    net = reconstruction_spec(spec, model_params, relu_type=relu_type)
+        layer_name = self._get_blob_layer(data_net_param, blob_name)
+        net.backward(start=layer_name, end=self.img_layer_name)
 
-    tmpspec = tempfile.NamedTemporaryFile()
-    tmpspec.write(text_format.MessageToString(net_param))
-    tmpspec.flush()
+        imgs = img_blob.data
+        recons = img_blob.diff
 
-    # initialize the net and forward()
-    net = caffe.Net(tmpspec.name, model_params, caffe.TEST)
-    return net
-
-    # for now, only accept layers with one top blob so I don't have to give
-    # the blob's name
-    assert len(layer.top) == 1
-    blob_name = layer.top[0]
-
-    net.forward()
-    blob = net.blobs[blob_name]
-
-    num = blob.data.shape[0]
-    max_idxs = []
-    for n in xrange(num):
-        flat_idx = blob.data[n].argmax()
-        idx = np.unravel_index(flat_idx, blob.data.shape[1:])
-        blob.diff[n][idx] = blob.data[n][idx]
-        max_idxs.append(idx)
-
-    net.backward(start=layer_name, end='conv1')
-    mean = config.load_mean_image()[15:-14, 15:-14]
-    imgs = net.blobs['data'].data.transpose([0, 2, 3, 1])
-    recons = net.blobs['data'].diff.transpose([0, 2, 3, 1])
-
-    def showable(img):
-        img = (img + mean)[:, :, ::-1]
-        img = img.clip(0, 255).astype(np.uint8)
-        return img
-
-    def show(i):
-        img = showable(imgs[i])
-        # TODO: this needs to be set somehow
-        reimg = showable(32*recons[i])
-        plt.subplot(221)
-        plt.imshow(img)
-        plt.subplot(222)
-        plt.imshow(reimg)
-        plt.subplot(223)
-        patchimg = np.copy(img)
-        patchimg[recons[i] != 0] = reimg[recons[i] != 0]
-        plt.imshow(patchimg)
-        plt.title('filter idx: {}'.format(max_idxs[i]))
-        try:
-            os.mkdir(pth.join(dirname, layer_name))
-        except OSError:
-            pass
-        plt.savefig(pth.join(dirname, layer_name, 'recon_{}_{}_{}.jpg'.format(layer_name, relu_type, i)))
-
-    for i in range(num):
-        show(i)
-
-    tmpspec.close()
+        return imgs, recons
