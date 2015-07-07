@@ -31,12 +31,29 @@ config = edict({
         }
     },
     'caffenet_imnet_val': {
-        'relu_type': relu_backward_types.DECONV,
+        'relu_type': relu_backward_types.GUIDED,
         'spec_wdata': 'specs/caffenet_imnet_val.prototxt',
         'spec_nodata': 'specs/caffenet_deploy.prototxt',
         'model_param': 'caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
         'batch_size': 20,
         'num_examples': 50000,
+        'mean_fname': 'caffe/data/ilsvrc12/imagenet_mean.binaryproto',
+        'img_blob_name': 'data',
+        'blob_multipliers': {
+            'conv1': 1.0,
+            'conv2': 2.0,
+            'conv3': 4.0,
+            'conv4': 8.0,
+            'conv5': 16.0,
+        }
+    },
+    'caffenet_imnet_train': {
+        'relu_type': relu_backward_types.DECONV,
+        'spec_wdata': 'specs/caffenet_imnet_train.prototxt',
+        'spec_nodata': 'specs/caffenet_deploy.prototxt',
+        'model_param': 'caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
+        'batch_size': 20,
+        'num_examples': 1281167,
         'mean_fname': 'caffe/data/ilsvrc12/imagenet_mean.binaryproto',
         'img_blob_name': 'data',
         'blob_multipliers': {
