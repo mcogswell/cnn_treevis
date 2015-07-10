@@ -15,9 +15,10 @@ from recon.config import config
 def main():
     '''
     Usage:
-        vis.py (maxes|single) <net_id> <blob_name> [--topk K]
+        vis.py (maxes|single) <net_id> <blob_name> [--topk <K>]
+
     Options:
-        --topk K    How many images to display at once?
+        --topk <K>    How many images to display at once?
     '''
     import docopt, textwrap
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))

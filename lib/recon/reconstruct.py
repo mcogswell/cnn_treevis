@@ -9,6 +9,7 @@ from collections import defaultdict
 import numpy as np
 import matplotlib.pyplot as plt
 import skimage.io as io
+import skimage.util.montage as montage
 
 import lmdb
 
@@ -216,51 +217,54 @@ class Reconstructor(object):
             if val == None:
                 raise Exception('activation for key {} not yet stored'.format(act_key))
             activations = pkl.loads(val)[-k:]
+        img_patches = []
+        rec_patches = []
+        # crop patches from the image and reconstruction
         for i, act in enumerate(activations):
             rec = act['reconstruction']
             img = act['img']
             top_left, bottom_right = act['patch_bbox']
             top, left, bottom, right = top_left + bottom_right
-            #mean = rec.mean()
-            #rec -= mean
-            #rec /= float(rec.max())
-            #rec *= 128
-            #rec += mean
-            #rec = (1.3 * rec).clip(0, 255).astype(np.uint8)
             img = img[top:bottom+1, left:right+1]
             rec = rec[top:bottom+1, left:right+1]
-            plt.axis('off')
-            plt.subplot(2, k, i+1)
-            plt.imshow(img)
-            plt.subplot(2, k, k+i+1)
-            '''
-                def _showable(self, img):
-                    # TODO: don't always assume images in the net are BGR
-                    img = img.transpose([1, 2, 0])
-                    img = (img + self.mean)[:, :, ::-1]
-                    img = img.clip(0, 255).astype(np.uint8)
-                    return img
-            '''
-            #mod = (img + (rec - self.mean[:, :, ::-1])).astype(np.uint8)
-            plt.imshow(rec)
-            plt.savefig(tmp_fname)
+            img_patches.append(img)
+            rec_patches.append(rec)
 
-        #io.imsave(tmp_fname, rec)
-        #keyboard('hi')
-        return None
-        img_keys, locations = zip(*activations)
-        vis_dict = self.vis(blob_name,
-                            feature_idx,
-                            img_keys=img_keys,
-                            locations=locations,
-                            context_patches=True)
-        vis_patches = vis_dict['vis_patches']
-        context_patches = vis_dict['context_patches']
-
-        self.net.forward(end=layer_name)
-        # concatenate into a batch with k images
-        # set net input
-
+        # display the patches in a grid
+        patch_size = [0, 0]
+        for img, rec in zip(img_patches, rec_patches):
+            patch_size[0] = max(img.shape[0], patch_size[0])
+            patch_size[0] = max(rec.shape[0], patch_size[0])
+            patch_size[1] = max(img.shape[1], patch_size[1])
+            patch_size[1] = max(rec.shape[1], patch_size[1])
+        def scale(patch):
+            assert len(patch.shape) == 3
+            if patch.shape[:2] == patch_size:
+                return patch
+            new_patch = np.zeros(tuple(patch_size) + patch.shape[2:3], dtype=patch.dtype)
+            new_patch[:patch.shape[0], :patch.shape[1], :patch.shape[2]] = patch[:, :, :]
+            return new_patch
+        img_patches = (scale(img) for img in img_patches)
+        rec_patches = (scale(rec) for rec in rec_patches)
+        pad_img_patches = [np.pad(img, ((0, 2), (0, 2), (0, 0)), 'constant')
+                                                for img in img_patches]
+        pad_rec_patches = [np.pad(rec, ((0, 2), (0, 2), (0, 0)), 'constant')
+                                                for rec in rec_patches]
+        img_patches = np.vstack([img[np.newaxis] for img in pad_img_patches])
+        rec_patches = np.vstack([rec[np.newaxis] for rec in pad_rec_patches])
+        img_mon_channels = []
+        rec_mon_channels = []
+        for channel in range(img_patches.shape[-1]):
+            imgs = img_patches[:, :, :, channel]
+            mon = montage.montage2d(imgs, fill=0, rescale_intensity=False)
+            img_mon_channels.append(mon)
+            recs = rec_patches[:, :, :, channel]
+            mon = montage.montage2d(recs, fill=0, rescale_intensity=False)
+            rec_mon_channels.append(mon)
+        img = np.dstack(img_mon_channels)
+        rec = np.dstack(rec_mon_channels)
+        combined = np.hstack([img, np.zeros([img.shape[0], 5, img.shape[2]], dtype=img.dtype), rec])
+        io.imsave(tmp_fname, combined)
 
     def reconstruct(self, blob_name):
         data_net_param = self._load_param(with_data=True)
