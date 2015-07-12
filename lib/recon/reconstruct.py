@@ -1,3 +1,4 @@
+import time
 import os
 import os.path as pth
 import tempfile
@@ -5,11 +6,13 @@ import cPickle as pkl
 import math
 from bisect import bisect
 from collections import defaultdict
+from itertools import izip_longest
 
 import numpy as np
 import matplotlib.pyplot as plt
 import skimage.io as io
 import skimage.util.montage as montage
+from skimage.exposure import rescale_intensity
 
 import lmdb
 
@@ -108,41 +111,65 @@ class Reconstructor(object):
     def _get_key(self, blob_name, feature_idx):
         return '{}_{}'.format(blob_name, feature_idx)
 
-    def _showable(self, img):
+    def _showable(self, img, rescale=False):
         # TODO: don't always assume images in the net are BGR
         img = img.transpose([1, 2, 0])
         img = (img + self.mean)[:, :, ::-1]
         img = img.clip(0, 255).astype(np.uint8)
+        if rescale:
+            img = rescale_intensity(img)
         return img
 
-    def _to_bbox(self, img, row, col):
+    def _to_bbox(self, img, blob_idx):
         '''
         Take an image which is mostly 0s and return the smallest
         bounding box which contains all non-0 entries.
 
         img     array of size (c, h, w)
+        blob_idx    tuple with (num, channels, height, width) or (num, channels)
         '''
-        m = abs(img).max(axis=0)
-        linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
-        linear_idxs = linear_idx_map[m > 0]
-        rows = (linear_idxs // m.shape[0])
-        cols = (linear_idxs % m.shape[0])
-        if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
-            top_left = row, col
-            bottom_right = row, col
+        # (num, channel, height, width)
+        if len(blob_idx) == 4:
+            row, col = blob_idx[-2:]
+            m = abs(img).max(axis=0)
+            linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
+            linear_idxs = linear_idx_map[m > 0]
+            rows = (linear_idxs // m.shape[0])
+            cols = (linear_idxs % m.shape[0])
+            if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
+                top_left = row, col
+                bottom_right = row, col
+            else:
+                top_left = (rows.min(), cols.min())
+                bottom_right = (rows.max(), cols.max())
+            return (top_left, bottom_right)
+        # (num, channel)
+        elif len(blob_idx) == 2:
+            return ((0, 0), (img.shape[1]-1, img.shape[2]-1))
         else:
-            top_left = (rows.min(), cols.min())
-            bottom_right = (rows.max(), cols.max())
-        return (top_left, bottom_right)
+            raise Exception('do not know how to create a bounding box from ' \
+                            'blob_idx {}'.format(blob_idx))
 
-    def _reconstruct_backward(self, net, net_param, blob_name, blob_idx):
+    def _reconstruct_backward(self, net, net_param, blob_name, blob_idxs, act_vals=None, act_mult=1):
         blob = net.blobs[blob_name]
         blob.diff[:] = 0
-        blob.diff[blob_idx] = blob.data[blob_idx]
+        for i, blob_idx in enumerate(blob_idxs):
+            if act_vals == None:
+                blob.diff[blob_idx] = act_mult * blob.data[blob_idx]
+            else:
+                blob.diff[blob_idx] = act_mult * act_vals[i]
         layer_name = self._get_blob_layer(net_param, blob_name)
         net.backward(start=layer_name, end=self.img_layer_name)
 
-    def build_max_act_db(self, blob_names, k=5):
+    def _len_lmdb(self, fname):
+        logger.info('computing lmdb size...')
+        db = lmdb.open(fname)
+        n_examples = sum(1 for _ in db.begin().cursor())
+        del db
+        logger.info('found lmdb size: {} examples'.format(n_examples))
+        return n_examples
+
+    def build_max_act_db(self, blob_name, k=5):
         # don't use self.net, which a deploy net (data comes from python)
         data_net_param = self._load_param(with_data=True)
         net = self._load_net(data_net_param)
@@ -150,59 +177,100 @@ class Reconstructor(object):
                                                    self.config.img_blob_name)
         batch_size = self.config.batch_size
         n_batches = int(math.ceil(self.config.num_examples / float(batch_size)))
+        layers = {l.name: l for l in data_net_param.layer}
+        dbname = layers[self.config.data_layer_name].data_param.source
+        n_db_examples = self._len_lmdb(dbname)
+        assert n_db_examples == self.config.num_examples
+        assert n_db_examples % batch_size == 0
         example_offset = 0
-        # accumulate this over all batches
-        # maxes[key]
         # TODO: load the top_k lists from the db and append to them if they already exist
         maxes = defaultdict(lambda: [{'activation': -np.inf} for _ in range(k)])
+        logger.info('blob {}'.format(blob_name))
+        img_blob = net.blobs[self.config.img_blob_name]
+        blob = net.blobs[blob_name]
+        assert blob.data.shape[0] == batch_size
+        n_features = blob.data.shape[1]
 
         for batch_i in xrange(n_batches):
             net.forward()
             logger.info('batch {}'.format(batch_i))
 
-            for blob_name in blob_names:
-                img_blob = net.blobs[self.config.img_blob_name]
-                blob = net.blobs[blob_name]
-                assert blob.data.shape[0] == batch_size
-                n_features = blob.data.shape[1]
-                logger.info('blob {}'.format(blob_name))
-
-                for num in xrange(batch_size): # examples
-                  logger.info('example {}'.format(example_offset + num))
-                  for chan in xrange(n_features): # channel
+            # for each example
+            for num in xrange(batch_size): # examples
+                logger.info('example {}'.format(example_offset + num))
+                for chan in xrange(n_features): # channel
                     key = self._get_key(blob_name, chan)
-                    # highest at the right
                     top_k = maxes[key]
-                    flat_idx = blob.data[num, chan, :, :].argmax()
-                    height, width = np.unravel_index(flat_idx, blob.data.shape[2:])
-                    blob_idx = (num, chan, height, width)
+                    fmap_idx = blob.data[num, chan].argmax()
+                    if len(blob.data.shape) > 2:
+                        fmap_idx = np.unravel_index(fmap_idx, blob.data.shape[2:])
+                    else:
+                        fmap_idx = tuple()
+                    blob_idx = (num, chan) + fmap_idx
                     act = blob.data[blob_idx]
-                    assert act == blob.data[num, chan, height, width]
 
+                    # is this example's best patch in the topk?
                     if act > top_k[0]['activation']:
                         img = img_blob.data[num, :, :, :]
-                        self._reconstruct_backward(net, 
-                                                   data_net_param, 
-                                                   blob_name, 
-                                                   blob_idx)
-                        # TODO: instead of mult, use a fixed value, perhaps the 
-                        # max over activations in the dataset
-                        mult = self.config['blob_multipliers'][blob_name]
-                        reconstruction = mult * img_blob.diff[num, :, :, :]
-                        bbox = self._to_bbox(reconstruction, height, width)
                         entry = {
                             'example_idx': example_offset + num,
-                            'feature_map_loc': (height, width),
+                            'feature_map_loc': blob_idx[2:] if len(blob_idx) > 2 else tuple(),
                             'img': self._showable(img),
-                            'reconstruction': self._showable(reconstruction),
+                            #'reconstruction': self._showable(reconstruction),
+                            'reconstruct_idx': blob_idx,
+                            'batch_idx': batch_i,
+                            'num': num,
                             'activation': act,
-                            'patch_bbox': bbox,
+                            #'patch_bbox': bbox,
                         }
                         top_k_idx = bisect([v['activation'] for v in top_k], act)
                         top_k.insert(top_k_idx, entry)
                         del top_k[0]
 
             example_offset += batch_size
+
+        entries_per_example = [[] for _ in range(n_db_examples)]
+        for chan in range(n_features):
+            key = self._get_key(blob_name, chan)
+            top_k = maxes[key]
+            for entry in top_k:
+                max_act = top_k[-1]['activation']
+                ex_idx = entry['example_idx']
+                entries_per_example[ex_idx].append((entry['reconstruct_idx'], max_act, entry))
+
+        # for each example, list the reconstructions which must be computed
+
+        example_offset = 0
+        # compute those reconstructions
+        for batch_i in xrange(n_batches):
+            net.forward()
+            logger.info('rec batch {}'.format(batch_i))
+
+            entries_in_batch  = entries_per_example[example_offset:example_offset+batch_size]
+            def total_entries():
+                total = 0
+                return sum(len(e) for e in entries_in_batch)
+
+            while total_entries():
+                entries_to_process = [ent.pop() for ent in entries_in_batch if ent]
+                blob_idxs, act_vals, blob_entries = zip(*entries_to_process)
+                # one idx per example
+                assert len(set(zip(*blob_idxs)[0])) == len(entries_to_process)
+                self._reconstruct_backward(net,
+                                           data_net_param,
+                                           blob_name,
+                                           blob_idxs,
+                                           act_vals,
+                                           act_mult=self.config.blob_multipliers[blob_name])
+                for blob_idx, entry in zip(blob_idxs, blob_entries):
+                    num = entry['num']
+                    reconstruction = img_blob.diff[num, :, :, :]
+                    bbox = self._to_bbox(reconstruction, blob_idx)
+                    entry['reconstruction'] = self._showable(reconstruction, rescale=True)
+                    entry['patch_bbox'] = bbox
+
+            example_offset += batch_size
+
 
         logger.info('finished computing maximum activations... writing to db')
         with self.act_env.begin(write=True) as txn:
