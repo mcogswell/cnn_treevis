@@ -15,10 +15,11 @@ from recon.config import config
 def main():
     '''
     Usage:
-        vis.py (maxes|single) <net_id> <blob_name> [--topk <K>]
+        vis.py (maxes|single) <net_id> <blob_name> [--topk <K>] [--nfeatures <N>]
 
     Options:
-        --topk <K>    How many images to display at once?
+        --topk <K>         How many images to display at once? [default: 9]
+        --nfeatures <N>    Only visualize the first N features [default: 30]
     '''
     import docopt, textwrap
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))
@@ -26,10 +27,11 @@ def main():
     net_id = main_args['<net_id>']
     blob_name = main_args['<blob_name>']
     topk = int(main_args['--topk'])
+    nfeatures = int(main_args['--nfeatures'])
 
     rec = Reconstructor(net_id)
     if main_args['maxes']:
-        for i in range(30):
+        for i in range(nfeatures):
             rec.canonical_image(blob_name, i, topk, '/tmp/test_{}.jpg'.format(i))
     elif main_args['single']:
         imgs, recons = rec.reconstruct(blob_name)
