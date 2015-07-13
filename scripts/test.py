@@ -15,29 +15,32 @@ from recon.config import config
 def main():
     '''
     Usage:
-        vis.py (maxes|single) <net_id> <blob_name> [--topk <K>] [--nfeatures <N>]
+        vis.py maxes <net_id> <blob_name> [--topk <K>] [--nfeatures <N>] [--stdout]
+        vis.py single <net_id> <blob_names>... [--stdout]
 
     Options:
         --topk <K>         How many images to display at once? [default: 9]
         --nfeatures <N>    Only visualize the first N features [default: 30]
+        --stdout    Log info to stdout alongside log file [default: false]
     '''
     import docopt, textwrap
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))
 
     net_id = main_args['<net_id>']
-    blob_name = main_args['<blob_name>']
-    topk = int(main_args['--topk'])
-    nfeatures = int(main_args['--nfeatures'])
-
+    use_stdout = main_args['--stdout']
     rec = Reconstructor(net_id)
+
+    util.setup_logging('test_{}'.format(net_id), use_stdout=use_stdout)
+
     if main_args['maxes']:
+        blob_name = main_args['<blob_name>']
+        topk = int(main_args['--topk'])
+        nfeatures = int(main_args['--nfeatures'])
         for i in range(nfeatures):
-            rec.canonical_image(blob_name, i, topk, '/tmp/test_{}.jpg'.format(i))
+            rec.canonical_image(blob_name, i, topk, '/tmp/{}_feat{}.jpg'.format(blob_name, i))
     elif main_args['single']:
-        imgs, recons = rec.reconstruct(blob_name)
-        for i, recon in enumerate(recons):
-            mult = config.nets[net_id].blob_multipliers[blob_name]
-            io.imsave('/tmp/recon_{}.jpg'.format(i), rec._showable(mult*recon))
+        blob_names = main_args['<blob_names>']
+        rec.reconstruct(blob_names)
 
 
 if __name__ == '__main__':

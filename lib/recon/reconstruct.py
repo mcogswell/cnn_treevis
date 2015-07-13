@@ -334,27 +334,46 @@ class Reconstructor(object):
         combined = np.hstack([img, np.zeros([img.shape[0], 5, img.shape[2]], dtype=img.dtype), rec])
         io.imsave(tmp_fname, combined)
 
-    def reconstruct(self, blob_name):
+    def reconstruct(self, blob_names):
         data_net_param = self._load_param(with_data=True)
         net = self._load_net(data_net_param)
         self.img_layer_name = self._get_blob_layer(data_net_param, 
                                                    self.config.img_blob_name)
-        net.forward()
+        for _ in range(8):
+            net.forward()
+        img_id = 8
+
         img_blob = net.blobs[self.config.img_blob_name]
-        blob = net.blobs[blob_name]
+        io.imsave('/tmp/img.jpg', self._showable(img_blob.data[img_id]))
 
-        num = blob.data.shape[0]
-        max_idxs = []
-        for n in xrange(num):
-            flat_idx = blob.data[n].argmax()
-            idx = np.unravel_index(flat_idx, blob.data.shape[1:])
-            blob.diff[n][idx] = blob.data[n][idx]
-            max_idxs.append(idx)
+        for blob_name in blob_names:
+            blob = net.blobs[blob_name]
+            logger.info('single image blob {}'.format(blob_name))
 
-        layer_name = self._get_blob_layer(data_net_param, blob_name)
-        net.backward(start=layer_name, end=self.img_layer_name)
+            # fc
+            if len(blob.data.shape) == 2:
+                top_features = (-blob.data[img_id]).argsort()
+                blob_idxs = [(img_id, idx) for idx in top_features]
+            # conv
+            elif len(blob.data.shape) == 4:
+                patch_idxs = []
+                patch_maxes = []
+                for feat_i in range(blob.data.shape[1]):
+                    patch_idx = blob.data[img_id, feat_i].argmax()
+                    patch_idx = np.unravel_index(patch_idx, blob.data.shape[2:])
+                    patch_idxs.append((img_id, feat_i) + patch_idx)
+                    patch_maxes.append(blob.data[img_id, feat_i].max())
+                top_features = np.array(patch_maxes).argsort()[::-1]
+                blob_idxs = [patch_idxs[i] for i in top_features]
+            else:
+                raise Exception('only fc or conv blobs supported, not {}'.format(blob_name))
 
-        imgs = img_blob.data
-        recons = img_blob.diff
+            for i, blob_idx in enumerate(blob_idxs[:40]):
+                self._reconstruct_backward(net,
+                                           data_net_param,
+                                           blob_name,
+                                           [blob_idx],
+                                           act_mult=self.config.blob_multipliers[blob_name])
+                io.imsave('/tmp/recon_{}_ord{}_feat{}.jpg'.format(blob_name, i, top_features[i]),
+                          self._showable(img_blob.diff[img_id]))
 
-        return imgs, recons

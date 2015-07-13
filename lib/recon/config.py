@@ -16,7 +16,7 @@ net_config = {
         'conv2': 4.0,
         'conv3': 20.0,
         'conv4': 40.0,
-        'conv5': 100.0,
+        'conv5': 40.0,
         'fc6': 400.0,
         'fc7': 4096.0,
     }
@@ -47,6 +47,20 @@ config = edict({
         'spec_nodata': 'specs/caffenet_deploy.prototxt',
         'num_examples': 1281167,
     }, **net_config),
+    'decov_nodrop_val': dict(net_config,**{
+        'relu_type': relu_backward_types.GUIDED,
+        'spec_wdata': 'specs/alexnet_val.prototxt',
+        'spec_nodata': 'specs/alexnet_deploy.prototxt',
+        'num_examples': 50000,
+        'model_param': 'data/models/alexnet_xcov67_xw.001_nodrop_snap_iter_450000.caffemodel',
+    }),
+    'nodecov_val': dict(net_config,**{
+        'relu_type': relu_backward_types.GUIDED,
+        'spec_wdata': 'specs/alexnet_val.prototxt',
+        'spec_nodata': 'specs/alexnet_deploy.prototxt',
+        'num_examples': 50000,
+        'model_param': 'data/models/alexnet_base_snap_iter_450000.caffemodel',
+    }),
 }
 }) 
 
