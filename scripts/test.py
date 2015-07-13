@@ -20,7 +20,7 @@ def main():
 
     Options:
         --topk <K>         How many images to display at once? [default: 9]
-        --nfeatures <N>    Only visualize the first N features [default: 30]
+        --nfeatures <N>    Only visualize the first N features [default: -1]
         --stdout    Log info to stdout alongside log file [default: false]
     '''
     import docopt, textwrap
@@ -36,6 +36,8 @@ def main():
         blob_name = main_args['<blob_name>']
         topk = int(main_args['--topk'])
         nfeatures = int(main_args['--nfeatures'])
+        if nfeatures == -1:
+            nfeatures = rec.num_features(blob_name)
         for i in range(nfeatures):
             rec.canonical_image(blob_name, i, topk, '/tmp/{}_feat{}.jpg'.format(blob_name, i))
     elif main_args['single']:

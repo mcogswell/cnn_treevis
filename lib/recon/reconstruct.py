@@ -69,6 +69,7 @@ class Reconstructor(object):
                                  map_size=config.lmdb_map_size)
         self.mean = load_mean_image(self.config.mean_fname)
         self.net_param = self._load_param()
+        self.net = self._load_net(self.net_param)
 
     def _load_param(self, with_data=False):
         if with_data:
@@ -94,6 +95,9 @@ class Reconstructor(object):
         tmpspec.close()
 
         return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
+
+    def num_features(self, blob_name):
+        return self.net.blobs[blob_name].data.shape[1]
 
     def _get_blob_layer(self, net_param, blob_name):
         '''
