@@ -19,7 +19,37 @@ net_config = {
         'conv5': 40.0,
         'fc6': 400.0,
         'fc7': 4096.0,
-    }
+    },
+    # This describes which pairs of caffe layers have (weighted)
+    # edges between them for vis purposes. (see Reconstructor.graph)
+    # Edges are directed in the same direction as forward prop
+    'edges': [
+        { # layer end backward at
+          'source_layer': 'conv1',
+          # layer to start backward from
+          'target_layer': 'relu1',
+          # blob with source neurons (probably a bottom of source_layer)
+          'source_blob': 'data',
+          # blob with target neurons
+          'target_blob': 'conv1', },
+        { 'source_layer': 'conv2',
+          'target_layer': 'relu2',
+          'source_blob': 'norm1',
+          'target_blob': 'conv2', },
+        { 'source_layer': 'conv3',
+          'target_layer': 'relu3',
+          'source_blob': 'norm2',
+          'target_blob': 'conv3', },
+        { 'source_layer': 'conv4',
+          'target_layer': 'relu4',
+          'source_blob': 'conv3',
+          'target_blob': 'conv4', },
+        { 'source_layer': 'conv5',
+          'target_layer': 'relu5',
+          'source_blob': 'conv4',
+          'target_blob': 'conv5', },
+        # TODO: add fully connected layers
+    ]
 }
 
 config = edict({

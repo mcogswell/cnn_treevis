@@ -17,6 +17,7 @@ def main():
     Usage:
         vis.py maxes <net_id> <blob_name> [--topk <K>] [--nfeatures <N>] [--stdout]
         vis.py single <net_id> <blob_names>... [--stdout]
+        vis.py graph <net_id> <blob_names>... [--stdout]
 
     Options:
         --topk <K>         How many images to display at once? [default: 9]
@@ -43,6 +44,12 @@ def main():
     elif main_args['single']:
         blob_names = main_args['<blob_names>']
         rec.reconstruct(blob_names)
+    elif main_args['graph']:
+        blob_names = main_args['<blob_names>']
+        d = rec.graph()
+        keyboard('graph')
+        with open('/tmp/graph.json', 'w') as f:
+            json.dump(d, f)
 
 
 if __name__ == '__main__':

@@ -14,6 +14,8 @@ import skimage.io as io
 import skimage.util.montage as montage
 from skimage.exposure import rescale_intensity
 
+import json
+
 import lmdb
 
 import caffe
@@ -380,4 +382,62 @@ class Reconstructor(object):
                                            act_mult=self.config.blob_multipliers[blob_name])
                 io.imsave('/tmp/recon_{}_ord{}_feat{}.jpg'.format(blob_name, i, top_features[i]),
                           self._showable(img_blob.diff[img_id]))
+
+    def graph(self):
+        data_net_param = self._load_param(with_data=True)
+        net = self._load_net(data_net_param)
+        layer_names = list(net._layer_names)
+        logger.info('forwarding')
+        for _ in range(8):
+            net.forward()
+        img_id = 8
+
+        # self.layer_edges is a list of (layer_source, layer_target) pairs
+        # (layer names) between which edge values should be computed.
+
+        nodes = []
+        links = []
+        adj_mats = []
+
+        # edges are in the direction of forward prop
+        for edge in self.config.edges:
+            # top
+            target_blob = net.blobs[edge.target_blob]
+            source_blob = net.blobs[edge.source_blob]
+            adj_mat = np.zeros([target_blob.data.shape[1], source_blob.data.shape[1]])
+            adj_mats.append(adj_mat)
+            for feat_i in range(source_blob.data.shape[1]):
+                source_name = edge.source_blob + '_{}'.format(feat_i)
+                nodes.append(source_name)
+            for target_feat_i in range(target_blob.data.shape[1]):
+                target_name = edge.target_blob + '_{}'.format(target_feat_i)
+                logger.info('target: {}'.format(target_name))
+                nodes.append(target_name)
+                target_blob.diff[:] = 0
+                if len(target_blob.data.shape) == 2:
+                    target_blob.diff[img_id, target_feat_i] = 1.0
+                elif len(target_blob.data.shape) == 4:
+                    act = target_blob.data[img_id, target_feat_i]
+                    max_act = act.max()
+                    max_idx = act.argmax()
+                    max_idx_2, max_idx_3 = np.unravel_index(max_idx, act.shape)
+                    target_blob.diff[img_id, target_feat_i, max_idx_2, max_idx_3] = 1.0
+                else:
+                    raise Exception('source/target blobs should be shaped as ' \
+                                    'if from a conv/fc layer')
+                net.backward(start=edge.target_layer, end=edge.source_layer)
+                edge_weights = source_blob.data * source_blob.diff
+                if len(edge_weights.shape) == 4:
+                    edge_weights = edge_weights.sum(axis=(2, 3))
+                for source_feat_i in range(source_blob.data.shape[1]):
+                    source_name = edge.source_blob + '_{}'.format(source_feat_i)
+                    weight = edge_weights[img_id, source_feat_i]
+                    links.append((source_name, target_name, weight))
+                    adj_mat[target_feat_i, source_feat_i] = weight
+
+        return {
+            'nodes': nodes,
+            'links': links,
+            'adj_mats': adj_mats,
+        }
 
