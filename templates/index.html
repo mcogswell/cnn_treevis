@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Tree Example</title>
+  </head>
+  <body>
+
+<img src="imgs/cat.jpg"></img>
+<h2>{{ root.caption }}</h2>
+<img src="imgs/feat/{{ root.imname }}"></img>
+<img src="imgs/recon/{{ root.recon_imname}}"></img>
+
+<br>
+<hr>
+
+<table>
+{% for prev in prevs %}
+<tr>
+<td>
+    <h2>{{ prev.caption }}</h2>
+    <img src="imgs/feat/{{ prev.imname }}"></img>
+    <img src="imgs/recon/{{ prev.recon_imname}}"></img>
+</td>
+</tr>
+{% endfor %}
+</table>
+
+
+</body>
+</html>

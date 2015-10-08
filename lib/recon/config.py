@@ -49,7 +49,17 @@ net_config = {
           'source_blob': 'conv4',
           'target_blob': 'conv5', },
         # TODO: add fully connected layers
-    ]
+    ],
+    'prev_layer_map': {
+        # TODO: make these work
+        #'fc7': 'fc6',
+        #'fc6': 'conv5',
+        'conv5': 'conv4',
+        'conv4': 'conv3',
+        'conv3': 'conv2',
+        'conv2': 'conv1',
+        'conv1': 'data',
+    },
 }
 
 config = edict({
