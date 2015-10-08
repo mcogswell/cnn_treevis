@@ -22,7 +22,7 @@ import caffe
 import caffe.proto.caffe_pb2 as cpb
 import google.protobuf.text_format as text_format
 
-from cogswell import keyboard
+from pdb import set_trace
 
 from recon.config import config, relu_backward_types
 from recon.util import load_mean_image
@@ -70,8 +70,13 @@ class Reconstructor(object):
         self.act_env = lmdb.open(self.config.max_activation_dbname, 
                                  map_size=config.lmdb_map_size)
         self.mean = load_mean_image(self.config.mean_fname)
-        self.net_param = self._load_param()
-        self.net = self._load_net(self.net_param)
+        self.net_param = self._load_param(with_data=True)
+
+    @property
+    def net(self):
+        if not hasattr(self, '_net'):
+            self._net = self._load_net(self.net_param)
+        return self._net
 
     def _load_param(self, with_data=False):
         if with_data:
@@ -174,6 +179,12 @@ class Reconstructor(object):
         del db
         logger.info('found lmdb size: {} examples'.format(n_examples))
         return n_examples
+
+    def max_idxs(self, blob_name, k=5):
+        net = self.net
+        net.forward()
+        spatial_max = net.blobs[blob_name].data.max(axis=(2, 3))
+        return spatial_max[0].argsort()[::-1][:k]
 
     def build_max_act_db(self, blob_name, k=5):
         # don't use self.net, which a deploy net (data comes from python)
