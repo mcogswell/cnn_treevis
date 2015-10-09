@@ -102,8 +102,6 @@ def vis_activation():
 def json_tree():
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
-    set_trace()
-
     # should input layer_name, not blob_name
     tree = vis_tree.tree(blob_name, act_id)
     return jsonify(tree)
@@ -122,7 +120,7 @@ def main():
 
     rec = Reconstructor(main_args['<net_id>'])
     vis_tree = VisTree(main_args['<net_id>'])
-    app.run(host='fukushima.ece.vt.edu', debug=True)
+    app.run(host='fukushima.ece.vt.edu')
 
 
 if __name__ == '__main__':
