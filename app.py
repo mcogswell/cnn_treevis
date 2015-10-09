@@ -7,8 +7,11 @@ from pdb import set_trace
 import numpy as np
 
 from jinja2 import Template
-from flask import Flask, request, render_template, send_file
+import flask
+from flask import Flask, request, render_template, send_file, jsonify, url_for
 app = Flask(__name__)
+
+from urllib import unquote
 
 from recon import *
 from recon.config import config
@@ -34,13 +37,13 @@ def img_recon(path):
 '''
 
 
+
 @app.route('/vis')
 def vis_activation():
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
+    return render_template('vis.html', blob_name=blob_name, act_id=act_id)
 
-    # should input layer_name, not blob_name
-    vis_tree.tree(blob_name, act_id)
 
     blob_to_idx = {'conv{}'.format(i): i-1 for i in [1, 2, 3, 4, 5]}
     if blob_name not in blob_to_idx.keys():
@@ -94,6 +97,16 @@ def vis_activation():
     }
 
     return render_template('index.html', **vis_info)
+
+@app.route('/vis/tree.json')
+def json_tree():
+    blob_name = request.args.get('blob_name', '')
+    act_id = int(request.args.get('act_id', ''))
+    set_trace()
+
+    # should input layer_name, not blob_name
+    tree = vis_tree.tree(blob_name, act_id)
+    return jsonify(tree)
 
 
 def main():

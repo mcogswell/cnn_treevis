@@ -14,6 +14,9 @@ import skimage.io as io
 import skimage.util.montage as montage
 from skimage.exposure import rescale_intensity
 
+import networkx as nx
+from networkx.readwrite import json_graph
+
 import json
 
 import lmdb
@@ -45,6 +48,7 @@ class VisTree(object):
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=True)
         self.net.forward()
+        self.dag = nx.DiGraph()
         self.prev_layer_map = {
             # TODO: make these work
             #'fc7': 'fc6',
@@ -67,12 +71,14 @@ class VisTree(object):
         bottom_layer_id = self.prev_layer_map[top_layer_id]
         bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
         bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
-        self.expand(top_layer_name, top_blob_name,
-                    bottom_layer_name, bottom_blob_name,
-                    act_id)
+        root = self.expand(top_layer_name, top_blob_name,
+                           bottom_layer_name, bottom_blob_name,
+                           act_id)
+        tree_dict = json_graph.tree_data(self.dag, root, attrs={'children': 'children', 'id': 'name'})
+        return tree_dict
 
     def expand(self, top_layer_name, top_blob_name,
-                     bottom_layer_name, bottom_blob_name, act_id):
+                     bottom_layer_name, bottom_blob_name, act_id, num_children=5):
         bottom_blob = self.net.blobs[bottom_blob_name]
         top_blob = self.net.blobs[top_blob_name]
 
@@ -97,7 +103,27 @@ class VisTree(object):
         edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
         if len(edge_weights.shape) == 3:
             edge_weights = edge_weights.mean(axis=(1, 2))
-        set_trace()
+        important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
+
+        dag = self.dag
+        # edges directed from top to bottom
+        top_node = '{}_{}'.format(top_blob_name, act_id)
+        dag.add_node(top_node)
+        dag.node[top_node]['blob_name'] = top_blob_name
+        dag.node[top_node]['act_id'] = act_id
+        # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
+        dag.node[top_node]['url'] = 'imgs/feat/{}_feat{}.jpg'.format(top_blob_name, act_id)
+        for k in range(num_children):
+            bottom_idx = important_bottom_idxs[k]
+            bottom_node = '{}_{}'.format(bottom_blob_name, bottom_idx)
+            dag.add_edge(top_node, bottom_node, weight=edge_weights[bottom_idx])
+            dag.node[bottom_node]['blob_name'] = bottom_blob_name
+            dag.node[bottom_node]['act_id'] = bottom_idx
+            # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
+            dag.node[bottom_node]['url'] = 'imgs/feat/{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
+
+        # return the node which was expanded
+        return top_node
 
 
     def image(self, node_id):
