@@ -38,6 +38,130 @@ def canonical_image(net_id, blob_name, feature_idx, k):
 
 
 
+class VisTree(object):
+
+    def __init__(self, net_id):
+        self.net_id = net_id
+        self.config = config.nets[self.net_id]
+        self.net_param = self._load_param(with_data=True)
+        self.net.forward()
+        self.prev_layer_map = {
+            # TODO: make these work
+            #'fc7': 'fc6',
+            #'fc6': 'conv5',
+            'conv5': 'conv4',
+            'conv4': 'conv3',
+            'conv3': 'conv2',
+            'conv2': 'conv1',
+            'conv1': 'data',
+        }
+
+    def max_idxs(self, layer_name, k=5):
+        blob = self.net.blobs[self.layer_to_blob(layer_name)]
+        spatial_max = blob.data.max(axis=(2, 3))
+        return spatial_max[0].argsort()[::-1][:k]
+
+    def tree(self, top_layer_id, act_id):
+        top_layer_name = self.config['layers'][top_layer_id]['layer_name']
+        top_blob_name = self.config['layers'][top_layer_id]['blob_name']
+        bottom_layer_id = self.prev_layer_map[top_layer_id]
+        bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
+        bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
+        self.expand(top_layer_name, top_blob_name,
+                    bottom_layer_name, bottom_blob_name,
+                    act_id)
+
+    def expand(self, top_layer_name, top_blob_name,
+                     bottom_layer_name, bottom_blob_name, act_id):
+        bottom_blob = self.net.blobs[bottom_blob_name]
+        top_blob = self.net.blobs[top_blob_name]
+
+        # TODO: make the constant 1.0 a function of the weight matrix corresponding to the neuron
+
+        # set all but 1 pixel of the top diff to 0
+        top_blob.diff[0] = 0
+        if len(top_blob.data.shape) == 2:
+            top_blob.diff[0, act_id] = 1.0
+        elif len(top_blob.data.shape) == 4:
+            spatial_max_idx = top_blob.data[0, act_id].argmax()
+            row, col = np.unravel_index(spatial_max_idx, top_blob.data.shape[2:])
+            top_blob.diff[0, act_id, row, col] = 1.0
+        else:
+            raise Exception('source/target blobs should be shaped as ' \
+                            'if from a conv/fc layer')
+
+        # TODO: make sure layer_name refers to the activation layer not the parameter layer
+
+        # compute weights between neurons
+        self.net.backward(start=top_layer_name, end=bottom_layer_name)
+        edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
+        if len(edge_weights.shape) == 3:
+            edge_weights = edge_weights.mean(axis=(1, 2))
+        set_trace()
+
+
+    def image(self, node_id):
+        pass
+
+    def reconstructions(self, node_id):
+        pass
+
+
+    @staticmethod
+    def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
+        '''
+        Return a new NetParameter with ReLUs suited for visualization
+        and a setup to always force backprop.
+        '''
+        net_param = cpb.NetParameter()
+        net_param.CopyFrom(in_param)
+        if len(net_param.layer) == 0:
+            raise Exception('Network must have at least one layer. Note that ' \
+                            'old net specs (with "layers" instead of "layer") ' \
+                            'are not yet supported')
+
+        # set relu backprop type and generate temp net
+        for layer in net_param.layer:
+            if layer.type == 'ReLU':
+                layer.relu_param.backprop_type = relu_type
+
+        # otherwise, backprop might not reach the image blob
+        net_param.force_backward = True
+
+        return net_param
+
+    @property
+    def net(self):
+        if not hasattr(self, '_net'):
+            self._net = self._load_net(self.net_param)
+        return self._net
+
+    def _load_param(self, with_data=False):
+        if with_data:
+            spec_fname = self.config.spec_wdata
+        else:
+            spec_fname = self.config.spec_nodata
+        net_param = cpb.NetParameter()
+        with open(spec_fname, 'r') as f:
+            text_format.Merge(f.read(), net_param)
+        return net_param
+
+    def _load_net(self, net_param):
+        '''
+        Takes a network spec file and returns a NamedTemporaryFile which
+        contains the modified spec with ReLUs appropriate for visualization.
+        '''
+        # TODO: also accept file objects instead of just names?
+        net_param = Reconstructor._convert_relus(net_param, relu_type=self.config.relu_type)
+
+        tmpspec = tempfile.NamedTemporaryFile(delete=False)
+        with tmpspec as f:
+            tmpspec.write(text_format.MessageToString(net_param))
+        tmpspec.close()
+
+        return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
+
+
 
 class Reconstructor(object):
 
@@ -295,6 +419,7 @@ class Reconstructor(object):
                 s = pkl.dumps(top_k)
                 txn.put(key, s)
 
+
     def canonical_image(self, blob_name, feature_idx, k, tmp_fname):
         act_key = self._get_key(blob_name, feature_idx)
         with self.act_env.begin() as txn:
@@ -436,6 +561,8 @@ class Reconstructor(object):
                 else:
                     raise Exception('source/target blobs should be shaped as ' \
                                     'if from a conv/fc layer')
+                # At least for ReLUs, backward is the same as a linear backward pass
+                # of the hidden activations.
                 net.backward(start=edge.target_layer, end=edge.source_layer)
                 edge_weights = source_blob.data * source_blob.diff
                 if len(edge_weights.shape) == 4:

@@ -39,6 +39,9 @@ def vis_activation():
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
 
+    # should input layer_name, not blob_name
+    vis_tree.tree(blob_name, act_id)
+
     blob_to_idx = {'conv{}'.format(i): i-1 for i in [1, 2, 3, 4, 5]}
     if blob_name not in blob_to_idx.keys():
         raise Exception('only blobs conv1 - conv5 supported')
@@ -100,11 +103,12 @@ def main():
 
     Options:
     '''
-    global rec
+    global rec, vis_tree
     import docopt, textwrap
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))
 
     rec = Reconstructor(main_args['<net_id>'])
+    vis_tree = VisTree(main_args['<net_id>'])
     app.run(host='fukushima.ece.vt.edu', debug=True)
 
 

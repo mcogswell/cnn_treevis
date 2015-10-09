@@ -60,6 +60,13 @@ net_config = {
         'conv2': 'conv1',
         'conv1': 'data',
     },
+    'layers': {
+        'conv5': { 'blob_name': 'conv5', 'layer_name': 'relu5', },
+        'conv4': { 'blob_name': 'conv4', 'layer_name': 'relu4', },
+        'conv3': { 'blob_name': 'conv3', 'layer_name': 'relu3', },
+        'conv2': { 'blob_name': 'conv2', 'layer_name': 'relu2', },
+        'conv1': { 'blob_name': 'conv1', 'layer_name': 'relu1', },
+    }
 }
 
 config = edict({
