@@ -60,10 +60,11 @@ class VisTree(object):
             'conv1': 'data',
         }
 
-    def max_idxs(self, layer_name, k=5):
-        blob = self.net.blobs[self.layer_to_blob(layer_name)]
+    def max_idxs(self, layer_id, k=5):
+        blob_name = self.config['layers'][layer_id]['blob_name']
+        blob = self.net.blobs[blob_name]
         spatial_max = blob.data.max(axis=(2, 3))
-        return spatial_max[0].argsort()[::-1][:k]
+        return list(spatial_max[0].argsort()[::-1][:k])
 
     def tree(self, top_layer_id, act_id):
         top_layer_name = self.config['layers'][top_layer_id]['layer_name']
@@ -71,14 +72,21 @@ class VisTree(object):
         bottom_layer_id = self.prev_layer_map[top_layer_id]
         bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
         bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
-        root = self.expand(top_layer_name, top_blob_name,
+        root = self._expand(top_layer_name, top_blob_name,
                            bottom_layer_name, bottom_blob_name,
                            act_id)
         tree_dict = json_graph.tree_data(self.dag, root, attrs={'children': 'children', 'id': 'name'})
         return tree_dict
-
+    
     def expand(self, top_layer_name, top_blob_name,
                      bottom_layer_name, bottom_blob_name, act_id, num_children=5):
+        self._expand(top_layer_name, top_blob_name,
+                     bottom_layer_name, bottom_blob_name, act_id, num_children)
+        # TODO: assumes layer names are same as layer ids
+        max_idxs = self.max_idxs(bottom_layer_name)
+
+    def _expand(self, top_layer_name, top_blob_name,
+                      bottom_layer_name, bottom_blob_name, act_id, num_children=5):
         bottom_blob = self.net.blobs[bottom_blob_name]
         top_blob = self.net.blobs[top_blob_name]
 
