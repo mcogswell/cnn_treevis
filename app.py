@@ -7,7 +7,7 @@ from pdb import set_trace
 import numpy as np
 
 from jinja2 import Template
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, send_file
 app = Flask(__name__)
 
 from recon import *
@@ -20,6 +20,18 @@ from recon.config import config
 def maxes(blob_name='conv5'):
     max_idxs = rec.max_idxs(blob_name)
     return '{}:\n{}'.format(blob_name, max_idxs)
+
+
+@app.route('/imgs/feat/<path:path>')
+def img_feat(path):
+    return send_file(pth.join('data/feat/{}'.format(path)))
+
+'''
+@app.route('/imgs/recon/<path:path>')
+def img_recon(path):
+    # TODO
+    return send_file(pth.join('data/recon/{}'.format(path)))
+'''
 
 
 @app.route('/vis')
