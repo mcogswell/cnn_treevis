@@ -54,6 +54,14 @@ def json_tree_maxes():
     return jsonify(maxes=maxes)
 
 
+@app.route('/vis/tree/expand')
+def json_tree_expand():
+    blob_name = request.args.get('blob_name', '')
+    act_id = int(request.args.get('act_id', ''))
+    # should input layer_name, not blob_name
+    children = vis_tree.expand(blob_name, act_id)
+    return jsonify(children=children)
+
 
 
 

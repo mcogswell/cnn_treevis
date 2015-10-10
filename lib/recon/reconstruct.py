@@ -66,29 +66,44 @@ class VisTree(object):
         spatial_max = blob.data.max(axis=(2, 3))
         return list(spatial_max[0].argsort()[::-1][:k])
 
+
     def tree(self, top_layer_id, act_id):
         top_layer_name = self.config['layers'][top_layer_id]['layer_name']
         top_blob_name = self.config['layers'][top_layer_id]['blob_name']
         bottom_layer_id = self.prev_layer_map[top_layer_id]
         bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
         bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
+
         root = self._expand(top_layer_name, top_blob_name,
                            bottom_layer_name, bottom_blob_name,
                            act_id)
+        # TODO: don't allow arbitrary depth tree to be returned
         tree_dict = json_graph.tree_data(self.dag, root, attrs={'children': 'children', 'id': 'name'})
         return tree_dict
-    
-    def expand(self, top_layer_name, top_blob_name,
-                     bottom_layer_name, bottom_blob_name, act_id, num_children=5):
-        self._expand(top_layer_name, top_blob_name,
-                     bottom_layer_name, bottom_blob_name, act_id, num_children)
+
+
+    def expand(self, top_layer_id, act_id, num_children=5):
+        top_layer_name = self.config['layers'][top_layer_id]['layer_name']
+        top_blob_name = self.config['layers'][top_layer_id]['blob_name']
+        bottom_layer_id = self.prev_layer_map[top_layer_id]
+        bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
+        bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
+
+        root, expanded_nodes = self._expand(top_layer_name, top_blob_name,
+                     bottom_layer_name, bottom_blob_name, act_id, num_children, return_expanded=True)
         # TODO: assumes layer names are same as layer ids
-        max_idxs = self.max_idxs(bottom_layer_name)
+        max_idxs = self.max_idxs(bottom_blob_name, k=num_children)
+        expanded_data = [self.dag.node[node] for node in expanded_nodes]
+        return expanded_data
+
 
     def _expand(self, top_layer_name, top_blob_name,
-                      bottom_layer_name, bottom_blob_name, act_id, num_children=5):
+                      bottom_layer_name, bottom_blob_name, act_id,
+                      num_children=5, return_expanded=False):
         bottom_blob = self.net.blobs[bottom_blob_name]
         top_blob = self.net.blobs[top_blob_name]
+
+        # TODO: don't run caffe stuff unless we really need to
 
         # TODO: make the constant 1.0 a function of the weight matrix corresponding to the neuron
 
@@ -121,6 +136,7 @@ class VisTree(object):
         dag.node[top_node]['act_id'] = act_id
         # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
         dag.node[top_node]['url'] = 'imgs/feat/{}_feat{}.jpg'.format(top_blob_name, act_id)
+        expanded_nodes = []
         for k in range(num_children):
             bottom_idx = important_bottom_idxs[k]
             bottom_node = '{}_{}'.format(bottom_blob_name, bottom_idx)
@@ -129,10 +145,13 @@ class VisTree(object):
             dag.node[bottom_node]['act_id'] = bottom_idx
             # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
             dag.node[bottom_node]['url'] = 'imgs/feat/{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
+            expanded_nodes.append(bottom_node)
 
         # return the node which was expanded
-        return top_node
-
+        if return_expanded:
+            return top_node, expanded_nodes
+        else:
+            return top_node
 
     def image(self, node_id):
         pass

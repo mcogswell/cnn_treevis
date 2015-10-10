@@ -23,11 +23,6 @@
   stroke-width: 1.5px;
 }
 
-#tree {
-  width: 100%;
-  height: 100%;
-}
-
 </style>
 <body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
@@ -36,11 +31,11 @@
 var i = 0,
     duration = 750,
     root,
-    nodeHeight = 250,
+    nodeHeight = 150,
     nodeWidth = 250,
     nodeMargin = {width: 20, height: 20};
 
-var margin = {top: nodeHeight/2 + 20, right: 120, bottom: 20, left: 120},
+var margin = {top: nodeHeight/2 + 20, right: nodeWidth/2 + 20, bottom: 20, left: nodeWidth/2 + 20},
     width = screen.width - margin.right - margin.left,
     height = screen.height - margin.top - margin.bottom;
 
@@ -186,9 +181,14 @@ function click(d) {
   if (d.children) {
     d._children = d.children;
     d.children = null;
-  } else {
+  } else if (d._children) {
     d.children = d._children;
     d._children = null;
+  } else {
+    d3.json("/vis/tree/expand?blob_name=" + d.blob_name + "&act_id=" + d.act_id, function(error, obj) {
+      if (error) throw error;
+      d.children = obj.children;
+    });
   }
   update(d);
 }
