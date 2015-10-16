@@ -66,6 +66,13 @@ net_config = {
         'conv3': { 'blob_name': 'conv3', 'layer_name': 'relu3', },
         'conv2': { 'blob_name': 'conv2', 'layer_name': 'relu2', },
         'conv1': { 'blob_name': 'conv1', 'layer_name': 'relu1', },
+    },
+    'blob_name_to_layer_name': {
+        'conv5': 'relu5',
+        'conv4': 'relu4',
+        'conv3': 'relu3',
+        'conv2': 'relu2',
+        'conv1': 'relu1',
     }
 }
 

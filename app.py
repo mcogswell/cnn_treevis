@@ -3,8 +3,11 @@ import cPickle as pkl
 import glob
 import os.path as pth
 from pdb import set_trace
+import cStringIO as StringIO
+import io
 
 import numpy as np
+import scipy
 
 from jinja2 import Template
 import flask
@@ -66,6 +69,19 @@ def json_tree_expand():
     children = get_vis_tree(net_id).expand(blob_name, act_id)
     return jsonify(children=children)
 
+
+@app.route('/vis/tree/reconstruction')
+def json_tree_reconstruction():
+    blob_name = request.args.get('blob_name', '')
+    act_id = int(request.args.get('act_id', ''))
+    layer_name = config['nets'][net_id]['blob_name_to_layer_name'][blob_name]
+    recons = get_vis_tree(net_id).reconstruction(layer_name, blob_name, act_id)
+
+    f = io.BytesIO()
+    scipy.misc.imsave(f, recons['reconstruction'], format='jpeg')
+    return send_file(f,
+                     attachment_filename='recon_{}_{}.jpg'.format(blob_name, act_id),
+                     mimetype='image/jpeg')
 
 
 _vis_trees = {}

@@ -103,7 +103,7 @@ function update(source) {
       .attr("y", -nodeHeight/2)
       .attr("width", nodeWidth - nodeMargin.width)
       .attr("height", nodeHeight - nodeMargin.height)
-      .attr("xlink:href", function(d) { return d.url; })
+      .attr("xlink:href", function(d) { return d.feat_url; })
       .on("mouseenter", function() {
         d3.select(this)
           .attr("width", nodeWidth * 2)
@@ -117,6 +117,17 @@ function update(source) {
           .attr("height", nodeHeight)
           .attr("x", -nodeWidth/2)
           .attr("y", -nodeHeight/2);
+      });
+
+  nodeEnter.append("svg:image")
+      //.attr("x", function(d) { return d.children || d._children ? -10 : 10; })
+      //.attr("dy", ".35em")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", 100) //nodeWidth - nodeMargin.width)
+      .attr("height", 100) //nodeHeight - nodeMargin.height)
+      .attr("xlink:href", function(d) {
+          return "vis/tree/reconstruction?blob_name=" + d.blob_name + "&act_id=" + d.act_id;
       });
 
   // Transition nodes to their new position.

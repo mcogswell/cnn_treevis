@@ -47,8 +47,12 @@ class VisTree(object):
         self.net_id = net_id
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=True)
+        self.image_blob = 'data'
+        self._replicate_first_image()
         self.net.forward()
         self.dag = nx.DiGraph()
+        self.mean = load_mean_image(self.config.mean_fname)
+        # TODO: remove these
         self.prev_layer_map = {
             # TODO: make these work
             #'fc7': 'fc6',
@@ -59,6 +63,12 @@ class VisTree(object):
             'conv2': 'conv1',
             'conv1': 'data',
         }
+        self.reconstructions = {}
+
+    def _replicate_first_image(self):
+        img_blob = self.net.blobs[self.image_blob]
+        for i in range(1, img_blob.data.shape[0]):
+            img_blob.data[i] = img_blob.data[0]
 
     def max_idxs(self, layer_id, k=5):
         blob_name = self.config['layers'][layer_id]['blob_name']
@@ -96,16 +106,21 @@ class VisTree(object):
         expanded_data = [self.dag.node[node] for node in expanded_nodes]
         return expanded_data
 
-
-    def _expand(self, top_layer_name, top_blob_name,
+    def _vis_backward(self, top_layer_name, top_blob_name,
                       bottom_layer_name, bottom_blob_name, act_id,
-                      num_children=5, return_expanded=False):
+                      num_children):
+        '''
+        Compute weights and visualizations through a series of calls to
+        net.backward(). After this call 
+        '''
         bottom_blob = self.net.blobs[bottom_blob_name]
         top_blob = self.net.blobs[top_blob_name]
+        img_blob = self.net.blobs[self.image_blob]
 
         # TODO: don't run caffe stuff unless we really need to
-
         # TODO: make the constant 1.0 a function of the weight matrix corresponding to the neuron
+        #       (maybe shouldn't do this because I really want to scale in image space, not in activation space)
+        # TODO: make sure layer_name refers to the activation layer not the parameter layer
 
         # set all but 1 pixel of the top diff to 0
         top_blob.diff[0] = 0
@@ -118,18 +133,54 @@ class VisTree(object):
         else:
             raise Exception('source/target blobs should be shaped as ' \
                             'if from a conv/fc layer')
-
-        # TODO: make sure layer_name refers to the activation layer not the parameter layer
-
-        # compute weights between neurons
         self.net.backward(start=top_layer_name, end=bottom_layer_name)
+
+        # compute weights between neurons (backward is needed to do deconvolution on the conv layers)
         edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
         if len(edge_weights.shape) == 3:
             edge_weights = edge_weights.mean(axis=(1, 2))
+
+        # TODO: either do this here and return it or do it in _expand
         important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
 
-        dag = self.dag
+        # backprop the rest of the way to get visualizations of leaves
+        bottom_blob.diff[:] = 0
+        if num_children > bottom_blob.diff.shape[0]:
+            raise Exception('Currently the number of visualized examples must be at most' \
+                            'the batch size of the network.')
+        for num, feat_idx in enumerate(important_bottom_idxs):
+            if len(bottom_blob.data.shape) == 2:
+                bottom_blob.diff[num, feat_idx] = 1.0
+            elif len(bottom_blob.data.shape) == 4:
+                spatial_max_idx = bottom_blob.data[num, feat_idx].argmax()
+                row, col = np.unravel_index(spatial_max_idx, bottom_blob.data.shape[2:])
+                bottom_blob.diff[num, feat_idx, row, col] = 1.0
+            else:
+                raise Exception('source/target blobs should be shaped as ' \
+                                'if from a conv/fc layer')
+        self.net.backward(start=bottom_layer_name)
+
+        return edge_weights
+
+
+    def _expand(self, top_layer_name, top_blob_name,
+                bottom_layer_name, bottom_blob_name, act_id,
+                num_children=5, return_expanded=False):
+        '''
+        Compute weights between layers w.r.t. a particular activation.
+
+        Given a pair of layers and an activation to focus on in the
+        top layer, compute the edge weights between the activation
+        and all activations of the previous layer.
+        '''
+        # run the net forward and back to generate vis data
+        edge_weights = self._vis_backward(top_layer_name, top_blob_name,
+                bottom_layer_name, bottom_blob_name, act_id, num_children)
+        important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
+
         # edges directed from top to bottom
+        dag = self.dag
+        img_blob = self.net.blobs[self.image_blob]
         top_node = '{}_{}'.format(top_blob_name, act_id)
         dag.add_node(top_node)
         dag.node[top_node]['blob_name'] = top_blob_name
@@ -140,11 +191,28 @@ class VisTree(object):
         for k in range(num_children):
             bottom_idx = important_bottom_idxs[k]
             bottom_node = '{}_{}'.format(bottom_blob_name, bottom_idx)
-            dag.add_edge(top_node, bottom_node, weight=edge_weights[bottom_idx])
+            dag.add_edge(top_node, bottom_node, attr_dict={
+                'weight': edge_weights[bottom_idx],
+            })
+
             dag.node[bottom_node]['blob_name'] = bottom_blob_name
             dag.node[bottom_node]['act_id'] = bottom_idx
             # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
-            dag.node[bottom_node]['url'] = 'imgs/feat/{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
+            dag.node[bottom_node]['feat_url'] = 'imgs/feat/{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
+            #dag.node[bottom_node]['img_url'] = 'vis/tree/vis_node{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
+
+            # TODO: messy dependency
+            # k is the correct example because _vis_backward uses the same idx order as important_bottom_idxs
+            reconstruction = img_blob.diff[k, :, :, :]
+            bbox = self._to_bbox(reconstruction)
+            reconstruction = self._showable(reconstruction, rescale=True)
+            # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
+            #dag.node[bottom_node]['reconstruction'] = reconstruction
+            self.reconstructions[bottom_node] = {
+                'reconstruction': reconstruction,
+                'bbox': bbox,
+            }
+
             expanded_nodes.append(bottom_node)
 
         # return the node which was expanded
@@ -153,11 +221,80 @@ class VisTree(object):
         else:
             return top_node
 
+
     def image(self, node_id):
         pass
 
-    def reconstructions(self, node_id):
-        pass
+
+    def reconstruction(self, layer_name, blob_name, feature_idx):
+        node_name = '{}_{}'.format(blob_name, feature_idx)
+        # TODO: replace these warnings with code that computes the reconstructions (call the _vis_backward thing?)
+        if node_name not in self.reconstructions:
+            blob = self.net.blobs[blob_name]
+            blob.diff[0] = 0
+            if len(blob.data.shape) == 2:
+                blob.diff[0, feature_idx] = 1.0
+            elif len(blob.data.shape) == 4:
+                spatial_max_idx = blob.data[0, feature_idx].argmax()
+                row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
+                blob.diff[0, feature_idx, row, col] = 1.0
+            else:
+                raise Exception('source/target blobs should be shaped as ' \
+                                'if from a conv/fc layer')
+            self.net.backward(start=layer_name)
+            img_blob = self.net.blobs[self.image_blob]
+            reconstruction = 100 * img_blob.diff[0, :, :, :]
+            bbox = self._to_bbox(reconstruction)
+            reconstruction = self._showable(reconstruction, rescale=True)
+            # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
+            #dag.node[bottom_node]['reconstruction'] = reconstruction
+            self.reconstructions[node_name] = {
+                'reconstruction': reconstruction,
+                'bbox': bbox,
+            }
+            
+        return self.reconstructions[node_name]
+
+
+    def _showable(self, img, rescale=False):
+        # TODO: don't always assume images in the net are BGR
+        img = img.transpose([1, 2, 0])
+        img = (img + self.mean)[:, :, ::-1]
+        img = img.clip(0, 255).astype(np.uint8)
+        if rescale:
+            img = rescale_intensity(img)
+        return img
+
+    def _to_bbox(self, img, ):
+        '''
+        Take an image which is mostly 0s and return the smallest
+        bounding box which contains all non-0 entries.
+
+        img     array of size (c, h, w)
+        '''
+        # (num, channel, height, width)
+        # TODO: don't always assume the reconstruction comes from a (4-tensor) conv layer
+        if True: #len(blob_idx) == 4:
+            #row, col = blob_idx[-2:]
+            m = abs(img).max(axis=0)
+            linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
+            linear_idxs = linear_idx_map[m > 0]
+            rows = (linear_idxs // m.shape[0])
+            cols = (linear_idxs % m.shape[0])
+            if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
+                raise Exception('TODO: not supported for now')
+                #top_left = row, col
+                #bottom_right = row, col
+            else:
+                top_left = (rows.min(), cols.min())
+                bottom_right = (rows.max(), cols.max())
+            return (top_left, bottom_right)
+        # (num, channel)
+        #elif len(blob_idx) == 2:
+        #    return ((0, 0), (img.shape[1]-1, img.shape[2]-1))
+        else:
+            raise Exception('do not know how to create a bounding box from ' \
+                            'blob_idx {}'.format(blob_idx))
 
 
     @staticmethod
