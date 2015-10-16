@@ -52,7 +52,7 @@ var svg = d3.select("body").append("svg")
   .append("g")
     .attr("transform", "translate(" + width/2 + "," + margin.top + ")");
 
-d3.json("/vis/tree.json?blob_name={{blob_name}}&act_id={{act_id}}", function(error, flare) {
+d3.json("/vis/tree/get?blob_name={{blob_name}}&act_id={{act_id}}", function(error, flare) {
   if (error) throw error;
 
   root = flare;

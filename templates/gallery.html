@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Gallery of Available Images</title>
+    <style>
+    .resize {
+        max-width: 100%;
+        width: auto;
+        height: auto;
+    }
+    </style>
+</head>
+<body>
+
+<table>
+<tbody>
+{% for img_fname in img_fnames %}
+    {% if loop.index0 % imgs_per_row == 0 and loop.index0 > 0 %}
+    <tr>
+    {% endif %}
+        <td>
+            <a href="/vis?blob_name={{blob_name}}&act_id={{act_id}}">
+            <img class="resize" src="imgs/gallery/{{img_fname}}"></img>
+            </a>
+        </td>
+    {% if loop.index0 % imgs_per_row == imgs_per_row - 1 %}
+    </tr>
+    {% endif %}
+{% endfor %}
+</tbody>
+</table>
+
+</body>
+</html>
