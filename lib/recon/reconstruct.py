@@ -108,12 +108,13 @@ class VisTree(object):
         for example_i, node_name in enumerate(nodes_need_backward):
             img_blob = self.net.blobs[self.image_blob]
             reconstruction = np.copy(img_blob.diff[example_i, :, :, :])
-            bbox = self._to_bbox(reconstruction)
+            # TODO: add bounding box back in
+            #bbox = self._to_bbox(reconstruction)
             reconstruction = self._showable(reconstruction)
             # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
             self._reconstructions[node_name] = {
                 'reconstruction': reconstruction,
-                'bbox': bbox,
+                #'bbox': bbox,
             }
 
         return [self._reconstructions[node] for node in nodes]
@@ -260,7 +261,7 @@ class VisTree(object):
             img = rescale_intensity(img)
         return img
 
-    def _to_bbox(self, img, ):
+    def _to_bbox(self, img):
         '''
         Take an image which is mostly 0s and return the smallest
         bounding box which contains all non-0 entries.
