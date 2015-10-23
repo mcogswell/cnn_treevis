@@ -14,21 +14,28 @@
 }
 
 .node text {
-  font: 10px sans-serif;
+  font: 20px sans-serif;
 }
 
 .link {
   fill: none;
-  stroke: #ccc;
-  stroke-width: 1.5px;
+  stroke: #333;
+  stroke-width: 4px;
 }
 
 .featvis {
   pointer-events: none;
 }
 
+.base_img {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+}
+
 </style>
 <body>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
 <script>
 
@@ -37,15 +44,15 @@ var i = 0,
     root,
     nodeHeight = 200,
     nodeWidth = 200,
-    nodeMargin = {width: 20, height: 20};
+    nodeMargin = {width: 30, height: 30};
 
-var margin = {top: nodeHeight/2 + 20, right: nodeWidth/2 + 20, bottom: 20, left: nodeWidth/2 + 20},
+var margin = {top: nodeHeight/2 + 90, right: nodeWidth/2 + 200, bottom: 20, left: nodeWidth/2 + 200},
     width = screen.width - margin.right - margin.left,
     height = screen.height - margin.top - margin.bottom;
 
 var tree = d3.layout.tree()
-    .size([height, width])
-    .nodeSize([nodeHeight, nodeWidth]);
+    //.size([height, width])
+    .nodeSize([nodeWidth + nodeMargin.width, nodeHeight + nodeMargin.height]);
 
 var diagonal = d3.svg.diagonal()
     .projection(function(d) { return [d.x, d.y]; });
@@ -54,13 +61,17 @@ var img_id = "{{img_id}}",
     base_url = "/vis/" + img_id,
     img_url = "/vis/{{img_id}}/img.jpg",
     img = d3.select("body").append("img")
-        .attr("src", img_url);
+        .attr("src", img_url)
+        .attr("class", "base_img");
 
-var svg = d3.select("body").append("svg")
+var svg_root = d3.select("body").append("svg")
     .attr("width", width + margin.right + margin.left)
     .attr("height", height + margin.top + margin.bottom)
-  .append("g")
-    .attr("transform", "translate(" + width/2 + "," + margin.top + ")");
+    .style("overflow", "visible")
+    .attr("id", "svg_root");
+var svg = svg_root.append("g")
+    .attr("transform", "translate(" + width/2 + "," + margin.top + ")")
+    .attr("id", "svg");
 
 d3.json(base_url + "/tree/get?blob_name={{blob_name}}&act_id={{act_id}}", function(error, flare) {
   if (error) throw error;
@@ -90,7 +101,7 @@ function update(source) {
       links = tree.links(nodes);
 
   // Normalize for fixed-depth.
-  nodes.forEach(function(d) { d.y = d.depth * 180; });
+  //nodes.forEach(function(d) { d.y = d.depth * 180; });
 
   // Update the nodes…
   var node = svg.selectAll("g.node")
@@ -105,30 +116,39 @@ function update(source) {
       .attr("r", 1e-6)
       .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
 
+  // image specific vis
   nodeEnter.append("svg:image")
       //.attr("x", function(d) { return d.children || d._children ? -10 : 10; })
       //.attr("dy", ".35em")
       .attr("x", -nodeWidth / 2)
       .attr("y", -nodeHeight / 2)
-      .attr("width", nodeWidth - nodeMargin.width)
-      .attr("height", nodeHeight - nodeMargin.height)
+      .attr("width", nodeWidth)
+      .attr("height", nodeHeight)
       .attr("xlink:href", function(d) {
           return base_url + "/tree/reconstruction?blob_name=" + d.blob_name + "&act_id=" + d.act_id;
       })
       .on("mouseenter", function(d) {
-        console.log("enter");
         d3.select("#feat_" + d.blob_name + "_" + d.act_id)
           .style("opacity", 1);
         var svg_node = this.parentElement;
         svg_node.parentElement.appendChild(svg_node);
       })
       .on("mouseleave", function(d) {
-        console.log("leave");
         d3.select("#feat_" + d.blob_name + "_" + d.act_id)
           .style("opacity", 0);
       })
-      .on("click", click);
+      .on("click", click)
 
+  nodeEnter.append("text")
+      .attr("x", -nodeWidth / 2)
+      .attr("y", -nodeHeight / 2 - 10)
+      .attr("width", nodeWidth)
+      .attr("height", 10)
+      .text(function(d) {
+          return d.blob_name + "_" + d.act_id;
+      });
+
+  // feature vis (initially not visible, not image specific)
   nodeEnter.append("svg:image")
       //.attr("x", function(d) { return d.children || d._children ? -10 : 10; })
       //.attr("dy", ".35em")
@@ -198,6 +218,15 @@ function update(source) {
     d.x0 = d.x;
     d.y0 = d.y;
   });
+
+  var bbox = $("#svg")[0].getBBox(),
+      new_width = bbox.width + margin.right + margin.left,
+      new_height = bbox.height + margin.top + margin.bottom;
+  if ($("#svg_root").width() < new_width || $("#svg_root").height() < new_height) {
+      svg_root.attr("width", bbox.width + margin.right + margin.left)
+          .attr("height", bbox.height + margin.top + margin.bottom);
+      svg.attr("transform", "translate(" + (margin.left + bbox.width/2) + "," + margin.top + ")");
+  }
 }
 
 // Toggle children on click.
