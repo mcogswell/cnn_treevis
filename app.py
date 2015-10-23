@@ -39,60 +39,71 @@ def gallery():
     return render_template('gallery.html', img_fnames=img_fnames, imgs_per_row=5, blob_name='conv5', act_id=4)
 
 
-@app.route('/vis')
-def vis_activation():
+@app.route('/vis/<path:img_id>')
+def vis(img_id):
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
-    return render_template('vis.html', blob_name=blob_name, act_id=act_id)
+    return render_template('vis.html', blob_name=blob_name, act_id=act_id, img_id=img_id)
 
 
-@app.route('/vis/tree/get')
-def json_tree():
+@app.route('/vis/<path:img_id>/img.jpg')
+def vis_img(img_id):
+    img = get_vis_tree(net_id, img_id).image()
+    return send_img(img, 'img.jpg')
+
+
+@app.route('/vis/<path:img_id>/tree/get')
+def json_tree(img_id):
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
     # should input layer_name, not blob_name
-    tree = get_vis_tree(net_id).tree(blob_name, act_id)
+    tree = get_vis_tree(net_id, img_id).tree(blob_name, act_id)
     return jsonify(tree)
 
 
-@app.route('/vis/tree/maxes')
-def json_tree_maxes():
+@app.route('/vis/<path:img_id>/tree/maxes')
+def json_tree_maxes(img_id):
     blob_name = request.args.get('blob_name', '')
-    maxes = get_vis_tree(net_id).max_idxs(blob_name)[:5]
+    maxes = get_vis_tree(net_id, img_id).max_idxs(blob_name)[:5]
     return jsonify(maxes=maxes)
 
 
-@app.route('/vis/tree/expand')
-def json_tree_expand():
+@app.route('/vis/<path:img_id>/tree/expand')
+def json_tree_expand(img_id):
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
     # should input layer_name, not blob_name
-    children = get_vis_tree(net_id).expand(blob_name, act_id)
+    children = get_vis_tree(net_id, img_id).expand(blob_name, act_id)
     return jsonify(children=children)
 
 
-@app.route('/vis/tree/reconstruction')
-def json_tree_reconstruction():
+@app.route('/vis/<path:img_id>/tree/reconstruction')
+def json_tree_reconstruction(img_id):
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
     layer_name = config['nets'][net_id]['blob_name_to_layer_name'][blob_name]
-    recons = get_vis_tree(net_id).reconstruction(layer_name, [blob_name], [act_id])[0]
+    recons = get_vis_tree(net_id, img_id).reconstruction(layer_name, [blob_name], [act_id])[0]
+    return send_img(recons['reconstruction'], 'recon_{}_{}.jpg'.format(blob_name, act_id))
 
+
+def send_img(img, fname):
     f = io.BytesIO()
-    scipy.misc.imsave(f, recons['reconstruction'], format='jpeg')
+    scipy.misc.imsave(f, img, format='jpeg')
     f.seek(0)
-    return send_file(f,
-                     attachment_filename='recon_{}_{}.jpg'.format(blob_name, act_id),
+    return send_file(f, attachment_filename=fname,
                      mimetype='image/jpeg')
 
 
 _vis_trees = {}
-def get_vis_tree(img_fname):
-    if img_fname in _vis_trees:
-        return _vis_trees[img_fname]
+def get_vis_tree(net_id, img_id):
+    key = '{}_{}'.format(net_id, img_id)
+    if key in _vis_trees:
+        return _vis_trees[key]
     else:
-        vis_tree = VisTree(net_id)
-        _vis_trees[img_fname] = vis_tree
+        # TODO: cleaner
+        img_fname = pth.join('data/gallery/', img_id)
+        vis_tree = VisTree(net_id, img_fname)
+        _vis_trees[key] = vis_tree
         return vis_tree
 
 

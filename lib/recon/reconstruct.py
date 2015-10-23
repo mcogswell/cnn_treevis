@@ -12,6 +12,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import skimage.io as io
 import skimage.util.montage as montage
+import skimage.transform as trans
+from skimage import img_as_ubyte
 from skimage.exposure import rescale_intensity
 
 import networkx as nx
@@ -43,15 +45,15 @@ def canonical_image(net_id, blob_name, feature_idx, k):
 
 class VisTree(object):
 
-    def __init__(self, net_id):
+    def __init__(self, net_id, img_fname):
         self.net_id = net_id
         self.config = config.nets[self.net_id]
-        self.net_param = self._load_param(with_data=True)
+        self.net_param = self._load_param(with_data=False)
         self.image_blob = 'data'
-        self._replicate_first_image()
+        self.mean = load_mean_image(self.config.mean_fname)
+        self._set_image(img_fname)
         self.net.forward()
         self.dag = nx.DiGraph()
-        self.mean = load_mean_image(self.config.mean_fname)
         # TODO: remove these
         self.prev_layer_map = {
             # TODO: make these work
@@ -64,6 +66,29 @@ class VisTree(object):
             'conv1': 'data',
         }
         self._reconstructions = {}
+
+    def image(self):
+        img_blob = self.net.blobs[self.image_blob]
+        return self._showable(img_blob.data[0])
+
+    def _set_image(self, img_fname):
+        img = io.imread(img_fname)
+        img = img_as_ubyte(trans.resize(img, [227, 227]))
+        img = self._unshowable(img)
+        self._replicate_first_image(img)
+
+    def _unshowable(self, img):
+        img = img.astype(np.uint8)
+        img = img[:, :, ::-1] - self.mean
+        img = img.transpose([2, 0, 1])
+        return img
+
+    def _replicate_first_image(self, img=None):
+        img_blob = self.net.blobs[self.image_blob]
+        if img is not None:
+            img_blob.data[0] = img
+        for i in range(1, img_blob.data.shape[0]):
+            img_blob.data[i] = img_blob.data[0]
 
 
     def reconstruction(self, layer_name, blob_names, feature_idxs):
@@ -165,11 +190,6 @@ class VisTree(object):
         expanded_data = [self.dag.node[node] for node in expanded_nodes]
         return expanded_data
 
-
-    def _replicate_first_image(self):
-        img_blob = self.net.blobs[self.image_blob]
-        for i in range(1, img_blob.data.shape[0]):
-            img_blob.data[i] = img_blob.data[0]
 
     def _compute_weights(self, top_layer_name, top_blob_name,
                       bottom_layer_name, bottom_blob_name, act_id,
