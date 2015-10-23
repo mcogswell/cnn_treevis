@@ -23,6 +23,10 @@
   stroke-width: 1.5px;
 }
 
+.featvis {
+  pointer-events: none;
+}
+
 </style>
 <body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
@@ -32,7 +36,7 @@ var i = 0,
     duration = 750,
     root,
     nodeHeight = 150,
-    nodeWidth = 250,
+    nodeWidth = 150,
     nodeMargin = {width: 20, height: 20};
 
 var margin = {top: nodeHeight/2 + 20, right: nodeWidth/2 + 20, bottom: 20, left: nodeWidth/2 + 20},
@@ -89,8 +93,7 @@ function update(source) {
   // Enter any new nodes at the parent's previous position.
   var nodeEnter = node.enter().append("g")
       .attr("class", "node")
-      .attr("transform", function(d) { return "translate(" + source.x0 + "," + source.y0 + ")"; })
-      .on("click", click);
+      .attr("transform", function(d) { return "translate(" + source.x0 + "," + source.y0 + ")"; });
 
   nodeEnter.append("circle")
       .attr("r", 1e-6)
@@ -99,38 +102,40 @@ function update(source) {
   nodeEnter.append("svg:image")
       //.attr("x", function(d) { return d.children || d._children ? -10 : 10; })
       //.attr("dy", ".35em")
-      .attr("x", -nodeWidth/2)
-      .attr("y", -nodeHeight/2)
+      .attr("x", -nodeWidth / 2)
+      .attr("y", -nodeHeight / 2)
       .attr("width", nodeWidth - nodeMargin.width)
       .attr("height", nodeHeight - nodeMargin.height)
       .attr("xlink:href", function(d) {
-          return "imgs/feat/" + d.blob_name + "_feat" + d.act_id + ".jpg";
+          return "vis/tree/reconstruction?blob_name=" + d.blob_name + "&act_id=" + d.act_id;
       })
-      .on("mouseenter", function() {
-        d3.select(this)
-          .attr("width", nodeWidth * 2)
-          .attr("height", nodeHeight * 2)
-          .attr("x", -nodeWidth)
-          .attr("y", -nodeHeight);
+      .on("mouseenter", function(d) {
+        console.log("enter");
+        d3.select("#feat_" + d.blob_name + "_" + d.act_id)
+          .style("opacity", 1);
+        var svg_node = this.parentElement;
+        svg_node.parentElement.appendChild(svg_node);
       })
-      .on("mouseleave", function() {
-        d3.select(this)
-          .attr("width", nodeWidth)
-          .attr("height", nodeHeight)
-          .attr("x", -nodeWidth/2)
-          .attr("y", -nodeHeight/2);
-      });
+      .on("mouseleave", function(d) {
+        console.log("leave");
+        d3.select("#feat_" + d.blob_name + "_" + d.act_id)
+          .style("opacity", 0);
+      })
+      .on("click", click);
 
   nodeEnter.append("svg:image")
       //.attr("x", function(d) { return d.children || d._children ? -10 : 10; })
       //.attr("dy", ".35em")
-      .attr("x", 0)
-      .attr("y", 0)
-      .attr("width", 100) //nodeWidth - nodeMargin.width)
-      .attr("height", 100) //nodeHeight - nodeMargin.height)
+      .attr("x", -3/2 * nodeWidth)
+      .attr("y", -3/2 * nodeHeight)
+      .attr("width", 3 * nodeWidth)
+      .attr("height", 3 * nodeHeight)
       .attr("xlink:href", function(d) {
-          return "vis/tree/reconstruction?blob_name=" + d.blob_name + "&act_id=" + d.act_id;
-      });
+          return "imgs/feat/" + d.blob_name + "_feat" + d.act_id + ".jpg";
+      })
+      .style("opacity", 0)
+      .attr("id", function(d) { return "feat_" + d.blob_name + "_" + d.act_id; })
+      .attr("class", "featvis");
 
   // Transition nodes to their new position.
   var nodeUpdate = node.transition()
@@ -201,6 +206,7 @@ function click(d) {
     d3.json("/vis/tree/expand?blob_name=" + d.blob_name + "&act_id=" + d.act_id, function(error, obj) {
       if (error) throw error;
       d.children = obj.children;
+      update(d);
     });
   }
   update(d);
