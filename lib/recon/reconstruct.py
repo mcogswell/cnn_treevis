@@ -232,20 +232,21 @@ class VisTree(object):
         if node_name not in self.reconstructions:
             blob = self.net.blobs[blob_name]
             blob.diff[0] = 0
+            mult = self.config.blob_multipliers[blob_name]
             if len(blob.data.shape) == 2:
-                blob.diff[0, feature_idx] = 1.0
+                blob.diff[0, feature_idx] = mult * blob.data[0, feature_idx]
             elif len(blob.data.shape) == 4:
                 spatial_max_idx = blob.data[0, feature_idx].argmax()
                 row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
-                blob.diff[0, feature_idx, row, col] = 1.0
+                blob.diff[0, feature_idx, row, col] = mult * blob.data[0, feature_idx, row, col]
             else:
                 raise Exception('source/target blobs should be shaped as ' \
                                 'if from a conv/fc layer')
             self.net.backward(start=layer_name)
             img_blob = self.net.blobs[self.image_blob]
-            reconstruction = 100 * img_blob.diff[0, :, :, :]
+            reconstruction = img_blob.diff[0, :, :, :]
             bbox = self._to_bbox(reconstruction)
-            reconstruction = self._showable(reconstruction, rescale=True)
+            reconstruction = self._showable(reconstruction)
             # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
             #dag.node[bottom_node]['reconstruction'] = reconstruction
             self.reconstructions[node_name] = {
@@ -258,7 +259,7 @@ class VisTree(object):
 
     def _showable(self, img, rescale=False):
         # TODO: don't always assume images in the net are BGR
-        img = img.transpose([1, 2, 0])
+        img = np.copy(img).transpose([1, 2, 0])
         img = (img + self.mean)[:, :, ::-1]
         img = img.clip(0, 255).astype(np.uint8)
         if rescale:

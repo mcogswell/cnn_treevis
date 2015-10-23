@@ -5,6 +5,7 @@ import os.path as pth
 from pdb import set_trace
 import cStringIO as StringIO
 import io
+import socket
 
 import numpy as np
 import scipy
@@ -79,6 +80,7 @@ def json_tree_reconstruction():
 
     f = io.BytesIO()
     scipy.misc.imsave(f, recons['reconstruction'], format='jpeg')
+    f.seek(0)
     return send_file(f,
                      attachment_filename='recon_{}_{}.jpg'.format(blob_name, act_id),
                      mimetype='image/jpeg')
@@ -108,7 +110,8 @@ def main():
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))
     net_id = main_args['<net_id>']
 
-    app.run(host='fukushima.ece.vt.edu', debug=main_args['--debug'])
+    hostname = socket.gethostname()
+    app.run(host=hostname, debug=main_args['--debug'])
 
 
 if __name__ == '__main__':
