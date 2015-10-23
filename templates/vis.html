@@ -103,7 +103,9 @@ function update(source) {
       .attr("y", -nodeHeight/2)
       .attr("width", nodeWidth - nodeMargin.width)
       .attr("height", nodeHeight - nodeMargin.height)
-      .attr("xlink:href", function(d) { return d.feat_url; })
+      .attr("xlink:href", function(d) {
+          return "imgs/feat/" + d.blob_name + "_feat" + d.act_id + ".jpg";
+      })
       .on("mouseenter", function() {
         d3.select(this)
           .attr("width", nodeWidth * 2)

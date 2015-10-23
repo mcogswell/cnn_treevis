@@ -63,21 +63,77 @@ class VisTree(object):
             'conv2': 'conv1',
             'conv1': 'data',
         }
-        self.reconstructions = {}
+        self._reconstructions = {}
 
-    def _replicate_first_image(self):
-        img_blob = self.net.blobs[self.image_blob]
-        for i in range(1, img_blob.data.shape[0]):
-            img_blob.data[i] = img_blob.data[0]
 
-    def max_idxs(self, layer_id, k=5):
+    def reconstruction(self, layer_name, blob_names, feature_idxs):
+        '''
+        Visualize the given blob/feature pairs in the deconv fashion.
+        All backprop happens from layer_name to the input. Starting backprop from multiple
+        is not yet supported.
+
+        Return a list of dicts, each with a 'reconstruction' and 'bbox' key.
+        '''
+        assert len(blob_names) == len(feature_idxs)
+
+        # zero out everything but the max pixel
+        nodes = []
+        nodes_need_backward = []
+        for example_i, tup in enumerate(zip(blob_names, feature_idxs)):
+            blob_name, feature_idx = tup
+            node_name = '{}_{}'.format(blob_name, feature_idx)
+            blob = self.net.blobs[blob_name]
+            nodes.append(node_name)
+            if node_name in self._reconstructions:
+                continue
+            if len(blob_names) > blob.data.shape[0]:
+                raise Exception('Currently the number of visualized examples must be at most' \
+                                'the batch size of the network.')
+            nodes_need_backward.append(node_name)
+
+            blob.diff[example_i] = 0
+            mult = self.config.blob_multipliers[blob_name]
+            if len(blob.data.shape) == 2:
+                blob.diff[example_i, feature_idx] = mult * blob.data[example_i, feature_idx]
+            elif len(blob.data.shape) == 4:
+                spatial_max_idx = blob.data[example_i, feature_idx].argmax()
+                row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
+                blob.diff[example_i, feature_idx, row, col] = mult * blob.data[example_i, feature_idx, row, col]
+            else:
+                raise Exception('source/target blobs should be shaped as ' \
+                                'if from a conv/fc layer')
+
+        # backprop and cache the visualization
+        self.net.backward(start=layer_name)
+        for example_i, node_name in enumerate(nodes_need_backward):
+            img_blob = self.net.blobs[self.image_blob]
+            reconstruction = np.copy(img_blob.diff[example_i, :, :, :])
+            bbox = self._to_bbox(reconstruction)
+            reconstruction = self._showable(reconstruction)
+            # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
+            self._reconstructions[node_name] = {
+                'reconstruction': reconstruction,
+                'bbox': bbox,
+            }
+
+        return [self._reconstructions[node] for node in nodes]
+
+
+    def max_idxs(self, layer_id):
+        '''
+        Return a list of feature indices which maximally activate the layer.
+        '''
         blob_name = self.config['layers'][layer_id]['blob_name']
         blob = self.net.blobs[blob_name]
         spatial_max = blob.data.max(axis=(2, 3))
-        return list(spatial_max[0].argsort()[::-1][:k])
+        return list(spatial_max[0].argsort()[::-1])
 
 
     def tree(self, top_layer_id, act_id):
+        '''
+        Return a JSON serializable dictionary representing a hierarchy of
+        features with root given by the top layer and activation id.
+        '''
         top_layer_name = self.config['layers'][top_layer_id]['layer_name']
         top_blob_name = self.config['layers'][top_layer_id]['blob_name']
         bottom_layer_id = self.prev_layer_map[top_layer_id]
@@ -88,11 +144,15 @@ class VisTree(object):
                            bottom_layer_name, bottom_blob_name,
                            act_id)
         # TODO: don't allow arbitrary depth tree to be returned
-        tree_dict = json_graph.tree_data(self.dag, root, attrs={'children': 'children', 'id': 'name'})
+        successor_tree = nx.ego_graph(self.dag, root, radius=len(self.dag))
+        tree_dict = json_graph.tree_data(successor_tree, root, attrs={'children': 'children', 'id': 'name'})
         return tree_dict
 
 
     def expand(self, top_layer_id, act_id, num_children=5):
+        '''
+        Grow the tree by exanding the top num_children nodes from the given activation.
+        '''
         top_layer_name = self.config['layers'][top_layer_id]['layer_name']
         top_blob_name = self.config['layers'][top_layer_id]['blob_name']
         bottom_layer_id = self.prev_layer_map[top_layer_id]
@@ -101,26 +161,27 @@ class VisTree(object):
 
         root, expanded_nodes = self._expand(top_layer_name, top_blob_name,
                      bottom_layer_name, bottom_blob_name, act_id, num_children, return_expanded=True)
-        # TODO: assumes layer names are same as layer ids
-        max_idxs = self.max_idxs(bottom_blob_name, k=num_children)
         expanded_data = [self.dag.node[node] for node in expanded_nodes]
         return expanded_data
 
-    def _vis_backward(self, top_layer_name, top_blob_name,
+
+    def _replicate_first_image(self):
+        img_blob = self.net.blobs[self.image_blob]
+        for i in range(1, img_blob.data.shape[0]):
+            img_blob.data[i] = img_blob.data[0]
+
+    def _compute_weights(self, top_layer_name, top_blob_name,
                       bottom_layer_name, bottom_blob_name, act_id,
                       num_children):
         '''
-        Compute weights and visualizations through a series of calls to
-        net.backward(). After this call 
+        Compute weights between the given top and bottom layers.
+
+        Returns a 1d numpy array with one entry for each feature in the bottom blob.
+        Higher values indicate the top blob is more strongly connected to that feature.
         '''
         bottom_blob = self.net.blobs[bottom_blob_name]
         top_blob = self.net.blobs[top_blob_name]
         img_blob = self.net.blobs[self.image_blob]
-
-        # TODO: don't run caffe stuff unless we really need to
-        # TODO: make the constant 1.0 a function of the weight matrix corresponding to the neuron
-        #       (maybe shouldn't do this because I really want to scale in image space, not in activation space)
-        # TODO: make sure layer_name refers to the activation layer not the parameter layer
 
         # set all but 1 pixel of the top diff to 0
         top_blob.diff[0] = 0
@@ -139,28 +200,8 @@ class VisTree(object):
         edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
         if len(edge_weights.shape) == 3:
             edge_weights = edge_weights.mean(axis=(1, 2))
-
-        # TODO: either do this here and return it or do it in _expand
-        important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
-
-        # backprop the rest of the way to get visualizations of leaves
-        bottom_blob.diff[:] = 0
-        if num_children > bottom_blob.diff.shape[0]:
-            raise Exception('Currently the number of visualized examples must be at most' \
-                            'the batch size of the network.')
-        for num, feat_idx in enumerate(important_bottom_idxs):
-            if len(bottom_blob.data.shape) == 2:
-                bottom_blob.diff[num, feat_idx] = 1.0
-            elif len(bottom_blob.data.shape) == 4:
-                spatial_max_idx = bottom_blob.data[num, feat_idx].argmax()
-                row, col = np.unravel_index(spatial_max_idx, bottom_blob.data.shape[2:])
-                bottom_blob.diff[num, feat_idx, row, col] = 1.0
-            else:
-                raise Exception('source/target blobs should be shaped as ' \
-                                'if from a conv/fc layer')
-        self.net.backward(start=bottom_layer_name)
-
-        return edge_weights
+        assert len(edge_weights.shape) == 1
+        return abs(edge_weights)
 
 
     def _expand(self, top_layer_name, top_blob_name,
@@ -173,45 +214,33 @@ class VisTree(object):
         top layer, compute the edge weights between the activation
         and all activations of the previous layer.
         '''
-        # run the net forward and back to generate vis data
-        edge_weights = self._vis_backward(top_layer_name, top_blob_name,
+        # compute weights
+        edge_weights = self._compute_weights(top_layer_name, top_blob_name,
                 bottom_layer_name, bottom_blob_name, act_id, num_children)
-        important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
 
-        # edges directed from top to bottom
+        # reconstruct strong connections
+        important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
+        blob_names = [bottom_blob_name] * len(important_bottom_idxs)
+        recons = self.reconstruction(bottom_layer_name, blob_names, important_bottom_idxs)
+
+        # fill in the dag with edges from top to bottom and meta data
         dag = self.dag
         img_blob = self.net.blobs[self.image_blob]
         top_node = '{}_{}'.format(top_blob_name, act_id)
+        expanded_nodes = []
+
         dag.add_node(top_node)
         dag.node[top_node]['blob_name'] = top_blob_name
         dag.node[top_node]['act_id'] = act_id
-        # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
-        dag.node[top_node]['url'] = 'imgs/feat/{}_feat{}.jpg'.format(top_blob_name, act_id)
-        expanded_nodes = []
         for k in range(num_children):
             bottom_idx = important_bottom_idxs[k]
             bottom_node = '{}_{}'.format(bottom_blob_name, bottom_idx)
+
             dag.add_edge(top_node, bottom_node, attr_dict={
                 'weight': edge_weights[bottom_idx],
             })
-
             dag.node[bottom_node]['blob_name'] = bottom_blob_name
             dag.node[bottom_node]['act_id'] = bottom_idx
-            # TODO: eventually remove url attribute... this class shouldn't know anything about web stuff
-            dag.node[bottom_node]['feat_url'] = 'imgs/feat/{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
-            #dag.node[bottom_node]['img_url'] = 'vis/tree/vis_node{}_feat{}.jpg'.format(bottom_blob_name, bottom_idx)
-
-            # TODO: messy dependency
-            # k is the correct example because _vis_backward uses the same idx order as important_bottom_idxs
-            reconstruction = img_blob.diff[k, :, :, :]
-            bbox = self._to_bbox(reconstruction)
-            reconstruction = self._showable(reconstruction, rescale=True)
-            # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
-            #dag.node[bottom_node]['reconstruction'] = reconstruction
-            self.reconstructions[bottom_node] = {
-                'reconstruction': reconstruction,
-                'bbox': bbox,
-            }
 
             expanded_nodes.append(bottom_node)
 
@@ -222,44 +251,9 @@ class VisTree(object):
             return top_node
 
 
-    def image(self, node_id):
-        pass
-
-
-    def reconstruction(self, layer_name, blob_name, feature_idx):
-        node_name = '{}_{}'.format(blob_name, feature_idx)
-        # TODO: replace these warnings with code that computes the reconstructions (call the _vis_backward thing?)
-        if node_name not in self.reconstructions:
-            blob = self.net.blobs[blob_name]
-            blob.diff[0] = 0
-            mult = self.config.blob_multipliers[blob_name]
-            if len(blob.data.shape) == 2:
-                blob.diff[0, feature_idx] = mult * blob.data[0, feature_idx]
-            elif len(blob.data.shape) == 4:
-                spatial_max_idx = blob.data[0, feature_idx].argmax()
-                row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
-                blob.diff[0, feature_idx, row, col] = mult * blob.data[0, feature_idx, row, col]
-            else:
-                raise Exception('source/target blobs should be shaped as ' \
-                                'if from a conv/fc layer')
-            self.net.backward(start=layer_name)
-            img_blob = self.net.blobs[self.image_blob]
-            reconstruction = img_blob.diff[0, :, :, :]
-            bbox = self._to_bbox(reconstruction)
-            reconstruction = self._showable(reconstruction)
-            # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
-            #dag.node[bottom_node]['reconstruction'] = reconstruction
-            self.reconstructions[node_name] = {
-                'reconstruction': reconstruction,
-                'bbox': bbox,
-            }
-            
-        return self.reconstructions[node_name]
-
-
     def _showable(self, img, rescale=False):
         # TODO: don't always assume images in the net are BGR
-        img = np.copy(img).transpose([1, 2, 0])
+        img = img.transpose([1, 2, 0])
         img = (img + self.mean)[:, :, ::-1]
         img = img.clip(0, 255).astype(np.uint8)
         if rescale:

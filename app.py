@@ -58,7 +58,7 @@ def json_tree():
 @app.route('/vis/tree/maxes')
 def json_tree_maxes():
     blob_name = request.args.get('blob_name', '')
-    maxes = get_vis_tree(net_id).max_idxs(blob_name)
+    maxes = get_vis_tree(net_id).max_idxs(blob_name)[:5]
     return jsonify(maxes=maxes)
 
 
@@ -76,7 +76,7 @@ def json_tree_reconstruction():
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
     layer_name = config['nets'][net_id]['blob_name_to_layer_name'][blob_name]
-    recons = get_vis_tree(net_id).reconstruction(layer_name, blob_name, act_id)
+    recons = get_vis_tree(net_id).reconstruction(layer_name, [blob_name], [act_id])[0]
 
     f = io.BytesIO()
     scipy.misc.imsave(f, recons['reconstruction'], format='jpeg')
