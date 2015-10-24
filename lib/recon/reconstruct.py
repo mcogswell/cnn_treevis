@@ -57,8 +57,9 @@ class VisTree(object):
         # TODO: remove these
         self.prev_layer_map = {
             # TODO: make these work
-            #'fc7': 'fc6',
-            #'fc6': 'conv5',
+            'fc8': 'fc7',
+            'fc7': 'fc6',
+            'fc6': 'conv5',
             'conv5': 'conv4',
             'conv4': 'conv3',
             'conv3': 'conv2',
@@ -151,8 +152,11 @@ class VisTree(object):
         '''
         blob_name = self.config['layers'][layer_id]['blob_name']
         blob = self.net.blobs[blob_name]
-        spatial_max = blob.data.max(axis=(2, 3))
-        return list(spatial_max[0].argsort()[::-1])
+        if len(blob.data.shape) == 2:
+            features = blob.data
+        elif len(blob.data.shape) == 4:
+            features = blob.data.max(axis=(2, 3))
+        return list(features[0].argsort()[::-1])
 
 
     def tree(self, top_layer_id, act_id):

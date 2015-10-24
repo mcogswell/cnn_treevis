@@ -61,6 +61,9 @@ net_config = {
         'conv1': 'data',
     },
     'layers': {
+        'fc8': { 'blob_name': 'fc8', 'layer_name': 'fc8', },
+        'fc7': { 'blob_name': 'fc7', 'layer_name': 'relu7', },
+        'fc6': { 'blob_name': 'fc6', 'layer_name': 'relu6', },
         'conv5': { 'blob_name': 'conv5', 'layer_name': 'relu5', },
         'conv4': { 'blob_name': 'conv4', 'layer_name': 'relu4', },
         'conv3': { 'blob_name': 'conv3', 'layer_name': 'relu3', },
@@ -68,6 +71,9 @@ net_config = {
         'conv1': { 'blob_name': 'conv1', 'layer_name': 'relu1', },
     },
     'blob_name_to_layer_name': {
+        'fc8': 'fc8',
+        'fc7': 'relu7',
+        'fc6': 'relu6',
         'conv5': 'relu5',
         'conv4': 'relu4',
         'conv3': 'relu3',

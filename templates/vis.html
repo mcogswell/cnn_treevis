@@ -70,7 +70,7 @@ var svg_root = d3.select("body").append("svg")
     .style("overflow", "visible")
     .attr("id", "svg_root");
 var svg = svg_root.append("g")
-    .attr("transform", "translate(" + width/2 + "," + margin.top + ")")
+    .attr("transform", "translate(" + (margin.left + width/2) + "," + margin.top + ")")
     .attr("id", "svg");
 
 d3.json(base_url + "/tree/get?blob_name={{blob_name}}&act_id={{act_id}}", function(error, flare) {
