@@ -82,7 +82,11 @@ def json_tree_reconstruction(img_id):
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
     layer_name = config['nets'][net_id]['blob_name_to_layer_name'][blob_name]
-    recons = get_vis_tree(net_id, img_id).reconstruction([layer_name], [[act_id]])[0]
+    # TODO: clarify blob vs layer semantics, right now 'path' is layers, 'blob_name' is blobs
+    path = request.args.getlist('path')
+    path_ids = map(int, request.args.getlist('path_id'))
+    path = [config['nets'][net_id]['blob_name_to_layer_name'][name] for name in path]
+    recons = get_vis_tree(net_id, img_id).reconstruction(path + [layer_name], [path_ids + [act_id]])[0]
     return send_img(recons['reconstruction'], 'recon_{}_{}.jpg'.format(blob_name, act_id))
 
 
