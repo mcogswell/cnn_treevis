@@ -157,18 +157,14 @@ class VisTree(object):
         assert layer_path[-1] != self.image_blob
         layer_path += [None]
         inv_feature_paths = zip(*filtered_feature_paths)
-        set_trace()
         for layer_i, tup in enumerate(zip(layer_path[:-1], layer_path[1:], inv_feature_paths, blob_path)):
             top_layer, bottom_layer, feature_idxs, top_blob_name = tup
             # filter activations along feature paths
             for example_i, feature_idx in enumerate(feature_idxs):
                 if layer_i == 0:
-                    print 'hi'
                     set_max_pixel(example_i, feature_idx, top_blob_name)
                 else:
-                    print 'bye'
                     filter_feature(example_i, feature_idx, top_blob_name)
-            print top_layer, bottom_layer
             if bottom_layer is None:
                 self.net.backward(start=top_layer)
             else:
@@ -294,7 +290,7 @@ class VisTree(object):
         # fill in the dag with edges from top to bottom and meta data
         dag = self.dag
         img_blob = self.net.blobs[self.image_blob]
-        top_node = self._node_name(top_blob_path, act_ids)
+        top_node = self._node_name([top_blob_name], [act_id])
         expanded_nodes = []
 
         dag.add_node(top_node)
@@ -302,7 +298,7 @@ class VisTree(object):
         dag.node[top_node]['act_id'] = act_id
         for k in range(num_children):
             bottom_idx = important_bottom_idxs[k]
-            bottom_node = self._node_name(bottom_blob_path, bottom_idxs)
+            bottom_node = self._node_name([bottom_blob_name], [bottom_idx])
 
             dag.add_edge(top_node, bottom_node, attr_dict={
                 'weight': edge_weights[bottom_idx],
