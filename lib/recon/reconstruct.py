@@ -92,31 +92,55 @@ class VisTree(object):
             img_blob.data[i] = img_blob.data[0]
 
 
-    def reconstruction(self, layer_name, blob_names, feature_idxs):
+    def _node_name(self, blob_path, act_ids):
+        return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
+
+
+    def reconstruction(self, layer_path, feature_paths):
         '''
         Visualize the given blob/feature pairs in the deconv fashion.
         All backprop happens from layer_name to the input. Starting backprop from multiple
         is not yet supported.
 
+        If `paths` is specified then, for each item, it should specify a list of blob names
+        from root to this node. Only gradient information from those blobs will
+        be backpropped. TODO: better explain
+
+        ZF vis is a special case where layer_path = [top_layer]
+
         Return a list of dicts, each with a 'reconstruction' and 'bbox' key.
         '''
-        assert len(blob_names) == len(feature_idxs)
+        blob_path = [self.config['layer_to_blob'][layer] for layer in layer_path]
 
         # zero out everything but the max pixel
         nodes = []
         nodes_need_backward = []
-        for example_i, tup in enumerate(zip(blob_names, feature_idxs)):
-            blob_name, feature_idx = tup
-            node_name = '{}_{}'.format(blob_name, feature_idx)
-            blob = self.net.blobs[blob_name]
+        filtered_feature_paths = []
+        for example_i, feature_path in enumerate(feature_paths):
+            node_name = self._node_name(blob_path, feature_path)
             nodes.append(node_name)
+            blob = self.net.blobs[blob_path[0]]
             if node_name in self._reconstructions:
                 continue
-            if len(blob_names) > blob.data.shape[0]:
+            if len(feature_path) > blob.data.shape[0]:
                 raise Exception('Currently the number of visualized examples must be at most' \
                                 'the batch size of the network.')
             nodes_need_backward.append(node_name)
+            filtered_feature_paths.append(feature_path)
 
+        def filter_feature(example_i, feature_idx, blob_name):
+            blob = self.net.blobs[blob_name]
+            img = blob.diff[example_i]
+            total = abs(img).sum()
+            total_feature = abs(img[feature_idx]).sum()
+            mult = total / total_feature
+            assert mult >= 1.0
+            blob.diff[example_i, :feature_idx] = 0
+            blob.diff[example_i, feature_idx+1:] = 0
+            blob.diff[example_i] *= mult
+
+        def set_max_pixel(example_i, feature_idx, blob_name):
+            blob = self.net.blobs[blob_name]
             blob.diff[example_i] = 0
             mult = self.config.blob_multipliers[blob_name]
             if len(blob.data.shape) == 2:
@@ -129,8 +153,28 @@ class VisTree(object):
                 raise Exception('source/target blobs should be shaped as ' \
                                 'if from a conv/fc layer')
 
-        # backprop and cache the visualization
-        self.net.backward(start=layer_name)
+        # backprop, re-focusing on particular features at each step
+        assert layer_path[-1] != self.image_blob
+        layer_path += [None]
+        inv_feature_paths = zip(*filtered_feature_paths)
+        set_trace()
+        for layer_i, tup in enumerate(zip(layer_path[:-1], layer_path[1:], inv_feature_paths, blob_path)):
+            top_layer, bottom_layer, feature_idxs, top_blob_name = tup
+            # filter activations along feature paths
+            for example_i, feature_idx in enumerate(feature_idxs):
+                if layer_i == 0:
+                    print 'hi'
+                    set_max_pixel(example_i, feature_idx, top_blob_name)
+                else:
+                    print 'bye'
+                    filter_feature(example_i, feature_idx, top_blob_name)
+            print top_layer, bottom_layer
+            if bottom_layer is None:
+                self.net.backward(start=top_layer)
+            else:
+                self.net.backward(start=top_layer, end=bottom_layer)
+
+        # cache the visualization
         for example_i, node_name in enumerate(nodes_need_backward):
             img_blob = self.net.blobs[self.image_blob]
             reconstruction = np.copy(img_blob.diff[example_i, :, :, :])
@@ -245,13 +289,12 @@ class VisTree(object):
 
         # reconstruct strong connections
         important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
-        blob_names = [bottom_blob_name] * len(important_bottom_idxs)
-        recons = self.reconstruction(bottom_layer_name, blob_names, important_bottom_idxs)
+        recons = self.reconstruction([bottom_layer_name], [[i] for i in important_bottom_idxs])
 
         # fill in the dag with edges from top to bottom and meta data
         dag = self.dag
         img_blob = self.net.blobs[self.image_blob]
-        top_node = '{}_{}'.format(top_blob_name, act_id)
+        top_node = self._node_name(top_blob_path, act_ids)
         expanded_nodes = []
 
         dag.add_node(top_node)
@@ -259,7 +302,7 @@ class VisTree(object):
         dag.node[top_node]['act_id'] = act_id
         for k in range(num_children):
             bottom_idx = important_bottom_idxs[k]
-            bottom_node = '{}_{}'.format(bottom_blob_name, bottom_idx)
+            bottom_node = self._node_name(bottom_blob_path, bottom_idxs)
 
             dag.add_edge(top_node, bottom_node, attr_dict={
                 'weight': edge_weights[bottom_idx],
