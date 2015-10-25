@@ -223,7 +223,7 @@ function update(source) {
               if (!d.idx) {
                 d.idx = 1;
               } else {
-                d.idx = (d.idx + 1) % 5;
+                d.idx = (d.idx + 1) % 7;
               }
             })
             .attr("x", function(d) {
@@ -232,10 +232,14 @@ function update(source) {
               } else if (d.idx == 1) {
                 return -2 * nodeWidth;
               } else if (d.idx == 2) {
-                return -1 * nodeWidth;
+                return -1.5 * nodeWidth;
               } else if (d.idx == 3) {
-                return 0 * nodeWidth;
+                return -1 * nodeWidth;
               } else if (d.idx == 4) {
+                return -0.5 * nodeWidth;
+              } else if (d.idx == 5) {
+                return 0 * nodeWidth;
+              } else if (d.idx == 6) {
                 return 10 + 0.5 * nodeWidth;
               }
             })
@@ -249,6 +253,10 @@ function update(source) {
               } else if (d.idx == 3) {
                 return 10.0;
               } else if (d.idx == 4) {
+                return 10.0;
+              } else if (d.idx == 5) {
+                return 10.0;
+              } else if (d.idx == 6) {
                 return -nodeHeight;
               }
             })
