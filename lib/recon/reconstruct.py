@@ -30,7 +30,7 @@ import google.protobuf.text_format as text_format
 from pdb import set_trace
 
 from recon.config import config, relu_backward_types
-from recon.util import load_mean_image
+from recon.util import load_mean_image, load_ilsvrc12_labels
 
 import logging
 logger = logging.getLogger(config.logger.name)
@@ -50,7 +50,9 @@ class VisTree(object):
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=False)
         self.image_blob = 'data'
+        self.prob_blob = 'prob'
         self.mean = load_mean_image(self.config.mean_fname)
+        self._labels = load_ilsvrc12_labels(self.config.labels_fname)
         self._set_image(img_fname)
         self.net.forward()
         self.dag = nx.DiGraph()
@@ -67,6 +69,12 @@ class VisTree(object):
             'conv1': 'data',
         }
         self._reconstructions = {}
+
+    def labels(self, top_k=5):
+        prob = self.net.blobs[self.prob_blob].data[0].flatten()
+        top_idxs = prob.argsort()[::-1][:top_k]
+        template = '{} ({:.2f})'
+        return [template.format(self._labels[i], prob[i]) for i in top_idxs]
 
     def image(self):
         img_blob = self.net.blobs[self.image_blob]
@@ -345,9 +353,9 @@ class VisTree(object):
         # TODO: don't always assume images in the net are BGR
         img = img.transpose([1, 2, 0])
         img = (img + self.mean)[:, :, ::-1]
-        img = img.clip(0, 255).astype(np.uint8)
-        if rescale:
+        if rescale and (img.min() < 0 or 255 < img.max()):
             img = rescale_intensity(img)
+        img = img.clip(0, 255).astype(np.uint8)
         return img
 
     def _to_bbox(self, img):

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Gallery of Available Images</title>
+    <style>
+    .resize {
+        max-width: 100%;
+        width: auto;
+        height: auto;
+    }
+    </style>
+</head>
+<body>
+
+<img src="/vis/{{img_id}}/img.jpg"></img>
+
+<table>
+<tbody>
+{% for layer in layers %}
+    <tr> <td> {{layer.blob_name}} </td> </tr>
+    {% for act_id in layer.maxes %}
+        {% if loop.index0 % imgs_per_row == 0 and loop.index0 > 0 %}
+        <tr>
+        {% endif %}
+        <td>
+            {{layer.blob_name}}_{{act_id}}
+            <a href="/vis/{{img_id}}?blob_name={{layer.blob_name}}&act_id={{act_id}}">
+            <img class="resize" src="/vis/{{img_id}}/tree/reconstruction?blob_name={{layer.blob_name}}&act_id={{act_id}}"></img>
+            </a>
+        </td>
+        {% if loop.index0 % imgs_per_row == imgs_per_row - 1 %}
+        </tr>
+        {% endif %}
+    {% endfor %}
+{% endfor %}
+</tbody>
+</table>
+
+</body>
+</html>

@@ -14,6 +14,10 @@ from recon.config import config
 from cogswell import keyboard
 
 
+def load_ilsvrc12_labels(fname):
+    with open(fname, 'r') as f:
+        return [line.strip() for line in f]
+
 def load_mean_image(fname):
     bp = cpb.BlobProto()
     with open(fname, 'r') as f:

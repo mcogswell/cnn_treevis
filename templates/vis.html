@@ -31,6 +31,7 @@
   position: fixed;
   top: 10px;
   left: 10px;
+  pointer-events: none;
 }
 
 </style>
@@ -60,9 +61,11 @@ var diagonal = d3.svg.diagonal()
 var img_id = "{{img_id}}",
     base_url = "/vis/" + img_id,
     img_url = "/vis/{{img_id}}/img.jpg",
-    img = d3.select("body").append("img")
-        .attr("src", img_url)
-        .attr("class", "base_img");
+    img_div = d3.select("body").append("div")
+        .attr("class", "base_img"),
+    img = img_div.append("img")
+        .attr("src", img_url),
+    label_p = img_div.append("p");
 
 var svg_root = d3.select("body").append("svg")
     .attr("width", width + margin.right + margin.left)
@@ -90,6 +93,10 @@ d3.json(base_url + "/tree/get?blob_name={{blob_name}}&act_id={{act_id}}", functi
 
   root.children.forEach(collapse);
   update(root);
+});
+
+d3.json(base_url + "/labels.json", function(error, data) {
+    label_p.html(data.labels);
 });
 
 d3.select(self.frameElement).style("height", "800px");

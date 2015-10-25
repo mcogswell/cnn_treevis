@@ -36,7 +36,7 @@ def img_gallery(path):
 def gallery():
     img_fnames = [pth.basename(fname) for fname in glob.glob('data/gallery/*')]
     # TODO: better/parameterized defaults
-    return render_template('gallery.html', img_fnames=img_fnames, imgs_per_row=5, blob_name='conv5', act_id=4)
+    return render_template('gallery.html', img_fnames=img_fnames, imgs_per_row=5)
 
 
 @app.route('/vis/<path:img_id>')
@@ -50,6 +50,25 @@ def vis(img_id):
 def vis_img(img_id):
     img = get_vis_tree(net_id, img_id).image()
     return send_img(img, 'img.jpg')
+
+
+@app.route('/vis/<path:img_id>/labels.json')
+def vis_labels(img_id):
+    labels = get_vis_tree(net_id, img_id).labels()
+    label_str = ''.join(['<p>' + label + '</p>' for label in labels])
+    return jsonify(labels=label_str)
+
+
+@app.route('/vis/<path:img_id>/overview')
+def vis_overview(img_id):
+    tree = get_vis_tree(net_id, img_id)
+    layers = list(tree.config['layers'].itervalues())
+    layers.sort(key=lambda l: -l['idx'])
+    for layer in layers:
+        blob_name = layer['blob_name']
+        maxes = get_vis_tree(net_id, img_id).max_idxs(blob_name)[:5]
+        layer['maxes'] = maxes
+    return render_template('overview.html', layers=layers, imgs_per_row=5, img_id=img_id)
 
 
 @app.route('/vis/<path:img_id>/tree/get')
