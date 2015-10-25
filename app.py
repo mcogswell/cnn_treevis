@@ -61,12 +61,13 @@ def vis_labels(img_id):
 
 @app.route('/vis/<path:img_id>/overview')
 def vis_overview(img_id):
+    num_maxes = int(request.args.get('num_maxes', '5'))
     tree = get_vis_tree(net_id, img_id)
     layers = list(tree.config['layers'].itervalues())
     layers.sort(key=lambda l: -l['idx'])
     for layer in layers:
         blob_name = layer['blob_name']
-        maxes = get_vis_tree(net_id, img_id).max_idxs(blob_name)[:5]
+        maxes = get_vis_tree(net_id, img_id).max_idxs(blob_name)[:num_maxes]
         layer['maxes'] = maxes
     return render_template('overview.html', layers=layers, imgs_per_row=5, img_id=img_id)
 
