@@ -27,11 +27,24 @@
   pointer-events: none;
 }
 
-.base_img {
+.base_div {
   position: fixed;
-  top: 10px;
+  bottom: 10px;
   left: 10px;
   pointer-events: none;
+  z-index: -1;
+}
+
+.base_div img {
+  float: left;
+  margin-right: 10px;
+  width: 150px;
+  height: 150px;
+}
+
+.base_div div {
+  float: right;
+  font: 13px sans-serif;
 }
 
 </style>
@@ -62,10 +75,10 @@ var img_id = "{{img_id}}",
     base_url = "/vis/" + img_id,
     img_url = "/vis/{{img_id}}/img.jpg",
     img_div = d3.select("body").append("div")
-        .attr("class", "base_img"),
+        .attr("class", "base_div"),
     img = img_div.append("img")
         .attr("src", img_url),
-    label_p = img_div.append("p");
+    label_p = img_div.append("div");
 
 var svg_root = d3.select("body").append("svg")
     .attr("width", width + margin.right + margin.left)
