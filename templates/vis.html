@@ -47,6 +47,15 @@
   font: 13px sans-serif;
 }
 
+.noselect {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
 </style>
 <body>
 <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
@@ -160,15 +169,48 @@ function update(source) {
       })
       .on("mouseleave", function(d) {
         d3.select("#feat_" + d.blob_name + "_" + d.act_id)
-          .style("opacity", 0);
+          .style("opacity", function(d) {
+            var opacity = d3.select(this).style("opacity");
+            if (!d.fixed_opacity) {
+              return 0;
+            } else {
+              return opacity;
+            }
+          });
       })
-      .on("click", click)
+      .on("click", click);
 
-  nodeEnter.append("text")
-      .attr("x", -nodeWidth / 2)
-      .attr("y", -nodeHeight / 2 - 10)
-      .attr("width", nodeWidth)
+  var reconHeader = nodeEnter.append("g")
+      .attr("transform", function(d) { return "translate(" + (-nodeWidth / 2) + "," + (-nodeHeight / 2 - 10) + ")"; });
+
+  reconHeader.append("rect")
+      .attr("height", 30)
+      .attr("width", 50)
+      .attr("x", 100)
+      .attr("y", -20)
+      //.attr("fill-opacity", 0.0);
+      //.attr("fill", "black");
+      .on("click", function(d) {
+          console.log('hi');
+          var id = "feat_" + d.blob_name + "_" + d.act_id;
+          d3.select("#" + id)
+            .style("opacity", function(d) {
+              if (d.fixed_opacity) {
+                d.fixed_opacity = false;
+                return 0.0;
+              } else {
+                d.fixed_opacity = true;
+                return 1.0;
+              }
+            });
+      });
+
+  reconHeader.append("text")
       .attr("height", 10)
+      .attr("width", nodeWidth)
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("class", "noselect")
       .text(function(d) {
           return d.blob_name + "_" + d.act_id;
       });
