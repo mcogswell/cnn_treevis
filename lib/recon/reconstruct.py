@@ -104,6 +104,12 @@ class VisTree(object):
     def _node_name(self, blob_path, act_ids):
         return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
 
+    def feature_map(self, blob_name, act_id):
+        feat_blob = self.net.blobs[blob_name]
+        feat_map = feat_blob.data[0, act_id]
+        feat_map = abs(feat_map)
+        feat_map = feat_map.clip(0, 255).astype(np.uint8)
+        return feat_map
 
     def reconstruction(self, layer_path, feature_paths):
         '''

@@ -109,6 +109,14 @@ def json_tree_reconstruction(img_id):
     return send_img(recons['reconstruction'], 'recon_{}_{}.jpg'.format(blob_name, act_id))
 
 
+@app.route('/vis/<path:img_id>/tree/feature_map')
+def json_tree_feature_map(img_id):
+    blob_name = request.args.get('blob_name', '')
+    act_id = int(request.args.get('act_id', ''))
+    feat_map = get_vis_tree(net_id, img_id).feature_map(blob_name, act_id)
+    return send_img(feat_map, 'fmap_{}_{}.jpg'.format(blob_name, act_id))
+
+
 def send_img(img, fname):
     f = io.BytesIO()
     scipy.misc.imsave(f, img, format='jpeg')
