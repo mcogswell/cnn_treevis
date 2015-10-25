@@ -31,7 +31,6 @@
   position: fixed;
   bottom: 10px;
   left: 10px;
-  pointer-events: none;
   z-index: -1;
 }
 
@@ -48,12 +47,12 @@
 }
 
 .noselect {
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 </style>
@@ -61,6 +60,16 @@
 <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
 <script>
+
+/*
+ * Interface comments:
+ * There are two (hidden) buttons in the top right of each reconstruction.
+ * The top right one removes the corresponding node.
+ * The top middle one (to the right of the conv5_159 text) toggles
+ * the state of the corresponding feature visualization.
+ * Pressing the 'h' key toggles whether the image and labels in the
+ * bottom left are hidden or not.
+ */
 
 var i = 0,
     duration = 750,
@@ -88,6 +97,22 @@ var img_id = "{{img_id}}",
     img = img_div.append("img")
         .attr("src", img_url),
     label_p = img_div.append("div");
+
+d3.select("body")
+    .on("keydown", function() {
+        // h
+        if (d3.event.keyCode == 72) {
+            var opacity = img_div.style("opacity");
+            console.log(opacity);
+            img_div.style("opacity", function() {
+                if (opacity > 0) {
+                    return 0.0;
+                } else {
+                    return 1.0;
+                }
+            });
+        }
+    });
 
 var svg_root = d3.select("body").append("svg")
     .attr("width", width + margin.right + margin.left)
