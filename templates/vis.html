@@ -125,7 +125,12 @@ function update(source) {
       .attr("width", nodeWidth)
       .attr("height", nodeHeight)
       .attr("xlink:href", function(d) {
-          return base_url + "/tree/reconstruction?blob_name=" + d.blob_name + "&act_id=" + d.act_id;
+          var url = base_url + "/tree/reconstruction?";
+          for (var i = 0; i < d.path.length; i++) {
+            url += "path=" + d.path[i] + "&";
+            url += "path_id=" + d.path_ids[i] + "&";
+          }
+          return url + "blob_name=" + d.blob_name + "&act_id=" + d.act_id;
       })
       .on("mouseenter", function(d) {
         d3.select("#feat_" + d.blob_name + "_" + d.act_id)

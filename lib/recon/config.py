@@ -19,6 +19,7 @@ net_config = {
         'conv5': 40.0,
         'fc6': 400.0,
         'fc7': 4096.0,
+        'fc8': 1000.0,
     },
     # This describes which pairs of caffe layers have (weighted)
     # edges between them for vis purposes. (see Reconstructor.graph)

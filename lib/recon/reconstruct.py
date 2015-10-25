@@ -111,8 +111,6 @@ class VisTree(object):
         Return a list of dicts, each with a 'reconstruction' and 'bbox' key.
         '''
         blob_path = [self.config['layer_to_blob'][layer] for layer in layer_path]
-
-        # zero out everything but the max pixel
         nodes = []
         nodes_need_backward = []
         filtered_feature_paths = []
@@ -128,31 +126,6 @@ class VisTree(object):
             nodes_need_backward.append(node_name)
             filtered_feature_paths.append(feature_path)
 
-        def filter_feature(example_i, feature_idx, blob_name):
-            blob = self.net.blobs[blob_name]
-            img = blob.diff[example_i]
-            total = abs(img).sum()
-            total_feature = abs(img[feature_idx]).sum()
-            mult = total / total_feature
-            assert mult >= 1.0
-            blob.diff[example_i, :feature_idx] = 0
-            blob.diff[example_i, feature_idx+1:] = 0
-            blob.diff[example_i] *= mult
-
-        def set_max_pixel(example_i, feature_idx, blob_name):
-            blob = self.net.blobs[blob_name]
-            blob.diff[example_i] = 0
-            mult = self.config.blob_multipliers[blob_name]
-            if len(blob.data.shape) == 2:
-                blob.diff[example_i, feature_idx] = mult * blob.data[example_i, feature_idx]
-            elif len(blob.data.shape) == 4:
-                spatial_max_idx = blob.data[example_i, feature_idx].argmax()
-                row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
-                blob.diff[example_i, feature_idx, row, col] = mult * blob.data[example_i, feature_idx, row, col]
-            else:
-                raise Exception('source/target blobs should be shaped as ' \
-                                'if from a conv/fc layer')
-
         # backprop, re-focusing on particular features at each step
         assert layer_path[-1] != self.image_blob
         layer_path += [None]
@@ -162,9 +135,9 @@ class VisTree(object):
             # filter activations along feature paths
             for example_i, feature_idx in enumerate(feature_idxs):
                 if layer_i == 0:
-                    set_max_pixel(example_i, feature_idx, top_blob_name)
+                    self.set_max_pixel(example_i, feature_idx, top_blob_name)
                 else:
-                    filter_feature(example_i, feature_idx, top_blob_name)
+                    self.filter_feature(example_i, feature_idx, top_blob_name)
             if bottom_layer is None:
                 self.net.backward(start=top_layer)
             else:
@@ -184,6 +157,87 @@ class VisTree(object):
             }
 
         return [self._reconstructions[node] for node in nodes]
+
+
+    def filter_feature(self, example_i, feature_idx, blob_name):
+        blob = self.net.blobs[blob_name]
+        img = blob.diff[example_i]
+        total = abs(img).sum()
+        total_feature = abs(img[feature_idx]).sum()
+        mult = total / total_feature
+        #mult = self.config.blob_multipliers[blob_name]
+        assert mult >= 1.0
+        blob.diff[example_i, :feature_idx] = 0
+        blob.diff[example_i, feature_idx+1:] = 0
+        #blob.diff[example_i] *= 20 * mult / total_feature
+        blob.diff[example_i] *= mult
+
+
+    def set_max_pixel(self, example_i, feature_idx, blob_name):
+        blob = self.net.blobs[blob_name]
+        blob.diff[example_i] = 0
+        mult = self.config.blob_multipliers[blob_name]
+        if len(blob.data.shape) == 2:
+            blob.diff[example_i, feature_idx] = mult * blob.data[example_i, feature_idx]
+        elif len(blob.data.shape) == 4:
+            spatial_max_idx = blob.data[example_i, feature_idx].argmax()
+            row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
+            blob.diff[example_i, feature_idx, row, col] = mult * blob.data[example_i, feature_idx, row, col]
+        else:
+            raise Exception('source/target blobs should be shaped as ' \
+                            'if from a conv/fc layer')
+
+
+    def _compute_weights(self, top_layer_name, top_blob_name,
+                      bottom_layer_name, bottom_blob_name, act_id,
+                      num_children):
+        '''
+        Compute weights between the given top and bottom layers.
+
+        Returns a 1d numpy array with one entry for each feature in the bottom blob.
+        Higher values indicate the top blob is more strongly connected to that feature.
+        '''
+        bottom_blob = self.net.blobs[bottom_blob_name]
+        top_blob = self.net.blobs[top_blob_name]
+        img_blob = self.net.blobs[self.image_blob]
+
+        dag = self.dag
+        top_node = self._node_name([top_blob_name], [act_id])
+        layer_path = dag.node[top_node]['path'] + [top_layer_name, bottom_layer_name]
+        path_ids = dag.node[top_node]['path_ids'] + [act_id]
+        blob_path = [self.config['layer_to_blob'][layer] for layer in layer_path]
+
+        ## set all but 1 pixel of the top diff to 0
+        #top_blob.diff[0] = 0
+        #if len(top_blob.data.shape) == 2:
+        #    top_blob.diff[0, act_id] = 1.0
+        #elif len(top_blob.data.shape) == 4:
+        #    spatial_max_idx = top_blob.data[0, act_id].argmax()
+        #    row, col = np.unravel_index(spatial_max_idx, top_blob.data.shape[2:])
+        #    top_blob.diff[0, act_id, row, col] = 1.0
+        #else:
+        #    raise Exception('source/target blobs should be shaped as ' \
+        #                    'if from a conv/fc layer')
+        #self.net.backward(start=top_layer_name, end=bottom_layer_name)
+
+        # backprop, re-focusing on particular features at each step
+        layer_path += [top_layer_name, bottom_layer_name]
+        inv_feature_paths = [[i] for i in path_ids]
+        for layer_i, tup in enumerate(zip(layer_path[:-1], layer_path[1:], inv_feature_paths, blob_path)):
+            top_layer, bottom_layer, feature_idxs, top_blob_name = tup
+            # filter activations along feature paths
+            if layer_i == 0:
+                self.set_max_pixel(0, feature_idxs[0], top_blob_name)
+            else:
+                self.filter_feature(0, feature_idxs[0], top_blob_name)
+            self.net.backward(start=top_layer, end=bottom_layer)
+
+        # compute weights between neurons (backward is needed to do deconvolution on the conv layers)
+        edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
+        if len(edge_weights.shape) == 3:
+            edge_weights = edge_weights.mean(axis=(1, 2))
+        assert len(edge_weights.shape) == 1
+        return abs(edge_weights)
 
 
     def max_idxs(self, layer_id):
@@ -235,40 +289,6 @@ class VisTree(object):
         return expanded_data
 
 
-    def _compute_weights(self, top_layer_name, top_blob_name,
-                      bottom_layer_name, bottom_blob_name, act_id,
-                      num_children):
-        '''
-        Compute weights between the given top and bottom layers.
-
-        Returns a 1d numpy array with one entry for each feature in the bottom blob.
-        Higher values indicate the top blob is more strongly connected to that feature.
-        '''
-        bottom_blob = self.net.blobs[bottom_blob_name]
-        top_blob = self.net.blobs[top_blob_name]
-        img_blob = self.net.blobs[self.image_blob]
-
-        # set all but 1 pixel of the top diff to 0
-        top_blob.diff[0] = 0
-        if len(top_blob.data.shape) == 2:
-            top_blob.diff[0, act_id] = 1.0
-        elif len(top_blob.data.shape) == 4:
-            spatial_max_idx = top_blob.data[0, act_id].argmax()
-            row, col = np.unravel_index(spatial_max_idx, top_blob.data.shape[2:])
-            top_blob.diff[0, act_id, row, col] = 1.0
-        else:
-            raise Exception('source/target blobs should be shaped as ' \
-                            'if from a conv/fc layer')
-        self.net.backward(start=top_layer_name, end=bottom_layer_name)
-
-        # compute weights between neurons (backward is needed to do deconvolution on the conv layers)
-        edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
-        if len(edge_weights.shape) == 3:
-            edge_weights = edge_weights.mean(axis=(1, 2))
-        assert len(edge_weights.shape) == 1
-        return abs(edge_weights)
-
-
     def _expand(self, top_layer_name, top_blob_name,
                 bottom_layer_name, bottom_blob_name, act_id,
                 num_children=5, return_expanded=False):
@@ -279,6 +299,18 @@ class VisTree(object):
         top layer, compute the edge weights between the activation
         and all activations of the previous layer.
         '''
+        dag = self.dag
+        top_node = self._node_name([top_blob_name], [act_id])
+        img_blob = self.net.blobs[self.image_blob]
+        expanded_nodes = []
+
+        if top_node not in dag:
+            dag.add_node(top_node)
+            dag.node[top_node]['blob_name'] = top_blob_name
+            dag.node[top_node]['act_id'] = act_id
+            dag.node[top_node]['path'] = []
+            dag.node[top_node]['path_ids'] = []
+
         # compute weights
         edge_weights = self._compute_weights(top_layer_name, top_blob_name,
                 bottom_layer_name, bottom_blob_name, act_id, num_children)
@@ -288,14 +320,6 @@ class VisTree(object):
         recons = self.reconstruction([bottom_layer_name], [[i] for i in important_bottom_idxs])
 
         # fill in the dag with edges from top to bottom and meta data
-        dag = self.dag
-        img_blob = self.net.blobs[self.image_blob]
-        top_node = self._node_name([top_blob_name], [act_id])
-        expanded_nodes = []
-
-        dag.add_node(top_node)
-        dag.node[top_node]['blob_name'] = top_blob_name
-        dag.node[top_node]['act_id'] = act_id
         for k in range(num_children):
             bottom_idx = important_bottom_idxs[k]
             bottom_node = self._node_name([bottom_blob_name], [bottom_idx])
@@ -305,6 +329,8 @@ class VisTree(object):
             })
             dag.node[bottom_node]['blob_name'] = bottom_blob_name
             dag.node[bottom_node]['act_id'] = bottom_idx
+            dag.node[bottom_node]['path'] = dag.node[top_node]['path'] + [top_layer_name]
+            dag.node[bottom_node]['path_ids'] = dag.node[top_node]['path_ids'] + [act_id]
 
             expanded_nodes.append(bottom_node)
 
