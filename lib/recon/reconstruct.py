@@ -81,7 +81,8 @@ class VisTree(object):
         return self._showable(img_blob.data[0])
 
     def _set_image(self, img_fname):
-        img = io.imread(img_fname)
+        # remove alpha channel if present
+        img = io.imread(img_fname)[:, :, :3]
         img = img_as_ubyte(trans.resize(img, [227, 227]))
         img = self._unshowable(img)
         self._replicate_first_image(img)
