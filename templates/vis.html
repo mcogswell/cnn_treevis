@@ -171,7 +171,7 @@ function update(source) {
         d3.select("#feat_" + d.blob_name + "_" + d.act_id)
           .style("opacity", function(d) {
             var opacity = d3.select(this).style("opacity");
-            if (!d.fixed_opacity) {
+            if (!d.idx) {
               return 0;
             } else {
               return opacity;
@@ -183,26 +183,71 @@ function update(source) {
   var reconHeader = nodeEnter.append("g")
       .attr("transform", function(d) { return "translate(" + (-nodeWidth / 2) + "," + (-nodeHeight / 2 - 10) + ")"; });
 
+  // toggle opacity/position of feature vis 
   reconHeader.append("rect")
       .attr("height", 30)
       .attr("width", 50)
       .attr("x", 100)
       .attr("y", -20)
-      //.attr("fill-opacity", 0.0);
-      //.attr("fill", "black");
+      .attr("fill-opacity", 0.0)
+      .attr("fill", "black")
       .on("click", function(d) {
-          console.log('hi');
           var id = "feat_" + d.blob_name + "_" + d.act_id;
           d3.select("#" + id)
+            .each(function(d) {
+              if (!d.idx) {
+                d.idx = 1;
+              } else {
+                d.idx = (d.idx + 1) % 5;
+              }
+            })
+            .attr("x", function(d) {
+              if (!d.idx) {
+                return -1 * nodeWidth;
+              } else if (d.idx == 1) {
+                return -2 * nodeWidth;
+              } else if (d.idx == 2) {
+                return -1 * nodeWidth;
+              } else if (d.idx == 3) {
+                return 0 * nodeWidth;
+              } else if (d.idx == 4) {
+                return 10 + 0.5 * nodeWidth;
+              }
+            })
+            .attr("y", function(d) {
+              if (!d.idx) {
+                return 10.0;
+              } else if (d.idx == 1) {
+                return 10.0;
+              } else if (d.idx == 2) {
+                return 10.0;
+              } else if (d.idx == 3) {
+                return 10.0;
+              } else if (d.idx == 4) {
+                return -nodeHeight;
+              }
+            })
             .style("opacity", function(d) {
-              if (d.fixed_opacity) {
-                d.fixed_opacity = false;
+              if (!d.idx) {
                 return 0.0;
               } else {
-                d.fixed_opacity = true;
                 return 1.0;
               }
             });
+      });
+
+  // toggle opacity/position of feature vis 
+  reconHeader.append("rect")
+      .attr("height", 30)
+      .attr("width", 50)
+      .attr("x", 150)
+      .attr("y", -20)
+      .attr("fill-opacity", 0.0)
+      .attr("fill", "cyan")
+      .on("click", function(d) {
+        var idx = d.parent.children.indexOf(d);
+        d.parent.children.splice(idx, 1);
+        update(d.parent);
       });
 
   reconHeader.append("text")
@@ -219,10 +264,10 @@ function update(source) {
   nodeEnter.append("svg:image")
       //.attr("x", function(d) { return d.children || d._children ? -10 : 10; })
       //.attr("dy", ".35em")
-      .attr("x", -3/2 * nodeWidth)
-      .attr("y", -1/3 * nodeHeight)
-      .attr("width", 3 * nodeWidth)
-      .attr("height", 3 * nodeHeight)
+      .attr("x", -1 * nodeWidth)
+      .attr("y", 10 + -0/3 * nodeHeight)
+      .attr("width", 2 * nodeWidth)
+      .attr("height", 2 * nodeHeight)
       .attr("xlink:href", function(d) {
           return "/imgs/feat/" + d.blob_name + "_feat" + d.act_id + ".jpg";
       })
