@@ -1,0 +1,3 @@
+* Note that caffe must be build without CuDNN support or the ReLU needs to
+  be changed to use my implementation. A better way to implement this would
+  be in the fashion of yosinski's deconv implementation.
