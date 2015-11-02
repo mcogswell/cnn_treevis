@@ -73,8 +73,8 @@ class VisTree(object):
     def labels(self, top_k=5):
         prob = self.net.blobs[self.prob_blob].data[0].flatten()
         top_idxs = prob.argsort()[::-1][:top_k]
-        template = '{} ({:.2f})'
-        return [template.format(self._labels[i], prob[i]) for i in top_idxs]
+        template = '{} ({:.2f}, {})'
+        return [template.format(self._labels[i], prob[i], i) for i in top_idxs]
 
     def image(self):
         img_blob = self.net.blobs[self.image_blob]

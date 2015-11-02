@@ -71,6 +71,7 @@ net_config = {
         'conv3': { 'blob_name': 'conv3', 'layer_name': 'relu3', 'idx': 3 },
         'conv2': { 'blob_name': 'conv2', 'layer_name': 'relu2', 'idx': 2 },
         'conv1': { 'blob_name': 'conv1', 'layer_name': 'relu1', 'idx': 1 },
+        'data': { 'blob_name': 'data', 'layer_name': 'NA', 'idx': 0 },
     },
     'layer_to_blob': {
         'fc8': 'fc8',
