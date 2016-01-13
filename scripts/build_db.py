@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 import caffe
 
-from recon import Reconstructor
+from recon.reconstruct import build_max_act_db
+import recon.config
 from recon import util
 
 def main():
@@ -31,8 +32,8 @@ def main():
 
     util.setup_logging('{}_{}'.format(net_id, blob_name), use_stdout=use_stdout)
 
-    recon = Reconstructor(net_id)
-    recon.build_max_act_db(blob_name, k=top_k)
+    config = recon.config.config.nets[net_id]
+    build_max_act_db(blob_name, config, k=top_k)
 
 if __name__ == '__main__':
     main()
