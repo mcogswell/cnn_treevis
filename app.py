@@ -63,7 +63,7 @@ def vis_labels(img_id):
 def vis_overview(img_id):
     num_maxes = int(request.args.get('num_maxes', '5'))
     tree = get_vis_tree(net_id, img_id)
-    layers = list(tree.config['layers'].itervalues())
+    layers = [layer for layer in tree.config['layers'].itervalues() if layer['include_in_overview']]
     layers.sort(key=lambda l: -l['idx'])
     for layer in layers:
         blob_name = layer['blob_name']

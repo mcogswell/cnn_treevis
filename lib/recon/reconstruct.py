@@ -43,6 +43,29 @@ def canonical_image(net_id, blob_name, feature_idx, k):
     net.canonical_image(blob_name, feature_idx, k)
 
 
+def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
+    '''
+    Return a new NetParameter with ReLUs suited for visualization
+    and a setup to always force backprop.
+    '''
+    net_param = cpb.NetParameter()
+    net_param.CopyFrom(in_param)
+    if len(net_param.layer) == 0:
+        raise Exception('Network must have at least one layer. Note that ' \
+                        'old net specs (with "layers" instead of "layer") ' \
+                        'are not yet supported')
+
+    # set relu backprop type and generate temp net
+    for layer in net_param.layer:
+        if layer.type == 'ReLU':
+            layer.relu_param.backprop_type = relu_type
+
+    # otherwise, backprop might not reach the image blob
+    net_param.force_backward = True
+
+    return net_param
+
+
 
 class VisTree(object):
 
@@ -443,7 +466,7 @@ class VisTree(object):
         contains the modified spec with ReLUs appropriate for visualization.
         '''
         # TODO: also accept file objects instead of just names?
-        net_param = Reconstructor._convert_relus(net_param, relu_type=self.config.relu_type)
+        net_param = _convert_relus(net_param, relu_type=self.config.relu_type)
 
         tmpspec = tempfile.NamedTemporaryFile(delete=False)
         with tmpspec as f:
@@ -474,7 +497,7 @@ def build_max_act_db(blob_name, config, k=5):
         contains the modified spec with ReLUs appropriate for visualization.
         '''
         # TODO: also accept file objects instead of just names?
-        net_param = Reconstructor._convert_relus(net_param, relu_type=config.relu_type)
+        net_param = _convert_relus(net_param, relu_type=config.relu_type)
 
         tmpspec = tempfile.NamedTemporaryFile(delete=False)
         with tmpspec as f:

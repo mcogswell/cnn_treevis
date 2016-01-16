@@ -1,1 +1,1 @@
-from reconstruct import Reconstructor, VisTree
+from reconstruct import VisTree

@@ -1,8 +1,27 @@
+release TODOs
+===
+
+* Revise the REST API so it posts json instead of sending GET keys.
+  This allows the API to reflect the full semantics (a reconstruction
+  is in the context of all its ancestors in the tree... it's not just specific
+  to one net/image/neuron tuple... rather it's net/image/root_neuron/child1/child2/..../this_neuron...
+  that information should be specified as json. This may allow me to get rid of the giant
+  json_tree object that gets passed around so the client only has to deal with local information.
+
+
+
+
+
+
+
+---
+
+
 This is a pre-alpha quality release of visualization software for Convolutional Neural Networks (CNNs).
 Its goal is to help the user understand the hierarchy of parts encoded by a CNN through
 visualization of the parts and their relation to existing low and high level intutions.
 
-Interface
+Application Overview
 ===
 
 Typical flow
@@ -18,6 +37,14 @@ Typical flow
 
 NOTE: This interface could be a lot better. Let me know if you have ideas or
 time to work on it.
+
+
+Frontend Components
+===
+
+The main vis is in templates/vis.html.
+
+The other pages... TODO
 
 
 Backend Components
