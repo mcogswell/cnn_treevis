@@ -3,7 +3,6 @@ import cPickle as pkl
 import glob
 import os.path as pth
 from pdb import set_trace
-import cStringIO as StringIO
 import io
 import socket
 
@@ -18,6 +17,7 @@ app = Flask(__name__)
 from urllib import unquote
 
 from recon import *
+from recon.reconstruct import get_path, get_path_id
 from recon.config import config
 
 
@@ -73,15 +73,14 @@ def vis_overview(img_id):
         max_acts = []
         for act_id in max_act_ids:
             path = [(blob_name, act_id)]
-            max_acts.append({'act_id': act_id, 'path_id': _get_path_id(path)})
+            max_acts.append({'act_id': act_id, 'path_id': get_path_id(path)})
         layer['max_acts'] = max_acts
-        print max_acts
     return render_template('overview.html', layers=layers, imgs_per_row=5, img_id=img_id)
 
 @app.route('/vis/<path:img_id>')
 def vis(img_id):
     '''
-    Detailed vis page for a particular nueron (specified as JSON POST data)
+    Detailed vis page for a particular net, image, and neuron
 
     # Args
         img_id: Name of image
@@ -89,7 +88,7 @@ def vis(img_id):
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
     root_path = [(blob_name, act_id)]
-    root_id = _get_path_id(root_path)
+    root_id = get_path_id(root_path)
     return render_template('vis.html',
                            root_path_id=root_id,
                            img_id=img_id,
@@ -123,10 +122,10 @@ def json_tree_children(img_id):
     Retrieve the info of a node's children.
     '''
     path_id = request.args.get('path_id', None)
-    path = _get_path(path_id)
+    path = get_path(path_id)
     tree = get_vis_tree(net_id, img_id)
     children = tree.children_from_path(path)
-    child_path_ids = [{'path_id': _get_path_id(child['path'])} for child in children]
+    child_path_ids = [{'path_id': get_path_id(child['path'])} for child in children]
     return jsonify({'children': child_path_ids})
 
 @app.route('/vis/<path:img_id>/tree/reconstruction')
@@ -135,7 +134,7 @@ def json_tree_reconstruction(img_id):
     Retrieve the reconstruction for a particular path
     '''
     path_id = request.args.get('path_id', None)
-    path = _get_path(path_id)
+    path = get_path(path_id)
     recons = get_vis_tree(net_id, img_id).reconstruction(path)
     return send_img(recons, 'recon_{}.jpg'.format(path_id))
 
@@ -175,32 +174,6 @@ def get_vis_tree(net_id, img_id):
         vis_tree = VisTree(net_id, img_fname)
         _vis_trees[key] = vis_tree
         return vis_tree
-
-# Keep track of paths through the reconstruction tree with one
-# string identifier. This makes it easier to handle paths as identifiers
-# in javascript. I can pass around one string instead of a JSON list.
-# Especially important for <img src="GET_url?path_id=">
-# TODO: now assume there is a 1-1 mapping
-_paths_by_id = {}
-def _check_path(path):
-    for node in path:
-        for part in map(str, node):
-            if '-' in part or '_' in part:
-                raise Exception('Invalid node... can not contain "-" or "_"')
-
-def _get_path_id(path):
-    _check_path(path)
-    path_id = '-'.join(['_'.join(map(str, node)) for node in path])
-    _paths_by_id[path_id] = path
-    return path_id
-
-def _get_path(path_id):
-    if path_id in _paths_by_id:
-        return _paths_by_id[path_id]
-    path = [node.split('_') for node in path_id.split('-')]
-    _check_path(path)
-    _paths_by_id[path_id] = path
-    return path
 
 
 

@@ -39,6 +39,34 @@ logger = logging.getLogger(config.logger.name)
 # main api calls
 
 
+
+# Keep track of paths through the reconstruction tree with one
+# string identifier. This makes it easier to handle paths as identifiers
+# in javascript. I can pass around one string instead of a JSON list.
+# Especially important for <img src="GET_url?path_id=">
+# TODO: now assume there is a 1-1 mapping
+_paths_by_id = {}
+def _check_path(path):
+    for node in path:
+        for part in map(str, node):
+            if '-' in part or '_' in part:
+                raise Exception('Invalid node... can not contain "-" or "_"')
+
+def get_path_id(path):
+    _check_path(path)
+    path_id = '-'.join(['_'.join(map(str, node)) for node in path])
+    _paths_by_id[path_id] = path
+    return path_id
+
+def get_path(path_id):
+    if path_id in _paths_by_id:
+        return _paths_by_id[path_id]
+    path = [node.split('_') for node in path_id.split('-')]
+    _check_path(path)
+    _paths_by_id[path_id] = path
+    return path
+
+
 def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
     '''
     Return a new NetParameter with ReLUs suited for visualization
@@ -65,7 +93,7 @@ def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
 
 class VisTree(object):
     '''
-    Keep track of explored reconstructions and allow efficient exploration of the space.
+    Keep track of explored reconstructions and allow semi-efficient exploration of the space.
     Try to answer the question "How does this network interpret this image?"
 
     This actually can keep track of a forest of visualizations. Each tree is rooted at
@@ -75,7 +103,11 @@ class VisTree(object):
     root feature map is masked. Keeping track of the nodes in this tree allows visualizations
     to be computed efficiently in batches instead of one at a time.
 
+    TODO: efficient batch computation doesn't always happen yet (e.g. overview page)
+
     NOTE: ZF means Zeiler/Fergus in reference to "Visualizing and Understanding Convolutional Networks"
+
+    TODO: note that all operations do not modify forward data, so only calls to backward need be made
     '''
 
     def __init__(self, net_id, img_fname):
@@ -87,8 +119,6 @@ class VisTree(object):
         self.net_id = net_id
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=False)
-        self.image_blob = 'data'
-        self.prob_blob = 'prob'
         self.mean = load_mean_image(self.config.mean_fname)
         self._labels = load_ilsvrc12_labels(self.config.labels_fname)
         self._set_image(img_fname)
@@ -105,7 +135,7 @@ class VisTree(object):
         # Args
             top_k: Number of labels to return, with most likely first
         '''
-        prob = self.net.blobs[self.prob_blob].data[0].flatten()
+        prob = self.net.blobs[self.config['prob_blob_name']].data[0].flatten()
         top_idxs = prob.argsort()[::-1][:top_k]
         template = '{} ({:.2f}, {})'
         return [template.format(self._labels[i], prob[i], i) for i in top_idxs]
@@ -114,7 +144,7 @@ class VisTree(object):
         '''
         Return the image visualized by this net
         '''
-        img_blob = self.net.blobs[self.image_blob]
+        img_blob = self.net.blobs[self.config['image_blob_name']]
         return self._showable(img_blob.data[0])
 
     def reconstruction(self, path):
@@ -128,55 +158,47 @@ class VisTree(object):
 
         Return a list of dicts, each with a 'reconstruction' and 'bbox' key.
         '''
-        # TODO: temporary to test new api
-        return self.image()
-        blob_path = [self.layer_to_blob[layer] for layer in layer_path]
-        nodes = []
-        nodes_need_backward = []
-        filtered_feature_paths = []
-        for example_i, feature_path in enumerate(feature_paths):
-            node_name = self._node_name(blob_path, feature_path)
-            nodes.append(node_name)
-            blob = self.net.blobs[blob_path[0]]
-            if node_name in self._reconstructions:
-                continue
-            if len(feature_path) > blob.data.shape[0]:
-                raise Exception('Currently the number of visualized examples must be at most' \
-                                'the batch size of the network.')
-            nodes_need_backward.append(node_name)
-            filtered_feature_paths.append(feature_path)
+        example_i = 0
 
         # backprop, re-focusing on particular features at each step
-        assert layer_path[-1] != self.image_blob
-        layer_path += [None]
-        inv_feature_paths = zip(*filtered_feature_paths)
-        for layer_i, tup in enumerate(zip(layer_path[:-1], layer_path[1:], inv_feature_paths, blob_path)):
-            top_layer, bottom_layer, feature_idxs, top_blob_name = tup
-            # filter activations along feature paths
-            for example_i, feature_idx in enumerate(feature_idxs):
-                if layer_i == 0:
-                    self.set_max_pixel(example_i, feature_idx, top_blob_name)
-                else:
-                    self.filter_feature(example_i, feature_idx, top_blob_name)
-            if bottom_layer is None:
-                self.net.backward(start=top_layer)
+        for path_i in range(len(path)):
+            # figure out what to backprop and what to filter
+            top_node = path[path_i]
+            top_id = self.node_to_layer_id(top_node)
+            top_blob_name = self.config['layers'][top_id]['blob_name']
+            top_layer_name = self.config['layers'][top_id]['layer_name']
+            top_act_id = self.node_to_act_id(top_node)
+            is_last_node = (path_i + 1 == len(path))
+            if not is_last_node:
+                bottom_node = path[path_i + 1]
+                bottom_id = self.node_to_layer_id(bottom_node)
+                bottom_layer_name = self.config['layers'][bottom_id]['layer_name']
+            # run filtering
+            if path_i == 0:
+                # TODO: batches might have different layers to start from
+                self.set_max_pixel(example_i, top_act_id, top_blob_name)
             else:
-                self.net.backward(start=top_layer, end=bottom_layer)
+                self.filter_feature(example_i, top_act_id, top_blob_name)
+            # run backprop
+            if is_last_node:
+                self.net.backward(start=top_layer_name)
+            else:
+                self.net.backward(start=top_layer_name, end=bottom_layer_name)
 
         # cache the visualization
-        for example_i, node_name in enumerate(nodes_need_backward):
-            img_blob = self.net.blobs[self.image_blob]
-            reconstruction = np.copy(img_blob.diff[example_i, :, :, :])
-            # TODO: add bounding box back in
-            #bbox = self._to_bbox(reconstruction)
-            reconstruction = self._showable(reconstruction)
-            # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
-            self._reconstructions[node_name] = {
-                'reconstruction': reconstruction,
-                #'bbox': bbox,
-            }
+        img_blob = self.net.blobs[self.config['image_blob_name']]
+        reconstruction = np.copy(img_blob.diff[example_i, :, :, :])
+        # TODO: add bounding box back in
+        #bbox = self._to_bbox(reconstruction)
+        reconstruction = self._showable(reconstruction)
+        path_id = get_path_id(path)
+        # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
+        self._reconstructions[path_id] = {
+            'reconstruction': reconstruction,
+            #'bbox': bbox,
+        }
 
-        return [self._reconstructions[node] for node in nodes]
+        return reconstruction
 
     def max_blob_idxs(self, blob_name):
         '''
@@ -188,16 +210,55 @@ class VisTree(object):
         elif len(blob.data.shape) == 4:
             # TODO: might want to do this in different ways
             features = blob.data.max(axis=(2, 3))
-        print features.shape
         return list(features[0].argsort()[::-1])
 
     def children_from_path(self, path, num_children=5):
+        return []
+        layers = self.config['layers']
+        top_id = path[-1]
+        top_layer_name = layers[top_id]['layer_name']
+        top_blob_name = layers[top_id]['blob_name']
+        bottom_id = layers[top_id]['prev_layer_id']
+        bottom_layer_name = layers[bottom_id]['layer_name']
+        bottom_blob_name = layers[bottom_id]['blob_name']
+        #act_id = 
+        weights = self._weight_child_neurons(top_layer_name, top_blob_name,
+                      bottom_layer_name, bottom_blob_name, act_id,
+                      num_children)
         #max_nodes = self._max_children(path)
         # TODO
         return []
 
 
     # Helpers
+
+    def filter_feature(self, example_i, feature_idx, blob_name):
+        blob = self.net.blobs[blob_name]
+        img = blob.diff[example_i]
+        total = abs(img).sum()
+        # TODO: configurable multiplier... also do this sum over all features
+        total_feature = abs(img[feature_idx]).sum()
+        mult = total / total_feature
+        #mult = self.config.blob_multipliers[blob_name]
+        assert mult >= 1.0
+        blob.diff[example_i, :feature_idx] = 0
+        blob.diff[example_i, feature_idx+1:] = 0
+        #blob.diff[example_i] *= 20 * mult / total_feature
+        blob.diff[example_i] *= mult
+
+    def set_max_pixel(self, example_i, feature_idx, blob_name):
+        blob = self.net.blobs[blob_name]
+        blob.diff[example_i] = 0
+        mult = self.config.blob_multipliers[blob_name]
+        if len(blob.data.shape) == 2:
+            blob.diff[example_i, feature_idx] = mult * blob.data[example_i, feature_idx]
+        elif len(blob.data.shape) == 4:
+            spatial_max_idx = blob.data[example_i, feature_idx].argmax()
+            row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
+            blob.diff[example_i, feature_idx, row, col] = mult * blob.data[example_i, feature_idx, row, col]
+        else:
+            raise Exception('source/target blobs should be shaped as ' \
+                            'if from a conv/fc layer')
 
     def _set_image(self, img_fname):
         # remove alpha channel if present
@@ -213,7 +274,7 @@ class VisTree(object):
         return img
 
     def _replicate_first_image(self, img=None):
-        img_blob = self.net.blobs[self.image_blob]
+        img_blob = self.net.blobs[self.config['image_blob_name']]
         if img is not None:
             img_blob.data[0] = img
         for i in range(1, img_blob.data.shape[0]):
@@ -317,66 +378,30 @@ class VisTree(object):
 
         return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
 
+    def node_to_layer_id(self, node):
+        return node[0]
+
+    def node_to_act_id(self, node):
+        return int(node[1])
+
     @property
     def layer_to_blob(self):
         if not hasattr(self, '_layer_to_blob'):
             self._layer_to_blob = { l.layer_name: l.blob_name for l in self.config['layers'] }
         return self._layer_to_blob
 
-
-
-
-    
-    # Extras (TODO)
-
-
-
-
-
-    def _node_name(self, blob_path, act_ids):
-        return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
-
-    def filter_feature(self, example_i, feature_idx, blob_name):
-        blob = self.net.blobs[blob_name]
-        img = blob.diff[example_i]
-        total = abs(img).sum()
-        total_feature = abs(img[feature_idx]).sum()
-        mult = total / total_feature
-        #mult = self.config.blob_multipliers[blob_name]
-        assert mult >= 1.0
-        blob.diff[example_i, :feature_idx] = 0
-        blob.diff[example_i, feature_idx+1:] = 0
-        #blob.diff[example_i] *= 20 * mult / total_feature
-        blob.diff[example_i] *= mult
-
-
-    def set_max_pixel(self, example_i, feature_idx, blob_name):
-        blob = self.net.blobs[blob_name]
-        blob.diff[example_i] = 0
-        mult = self.config.blob_multipliers[blob_name]
-        if len(blob.data.shape) == 2:
-            blob.diff[example_i, feature_idx] = mult * blob.data[example_i, feature_idx]
-        elif len(blob.data.shape) == 4:
-            spatial_max_idx = blob.data[example_i, feature_idx].argmax()
-            row, col = np.unravel_index(spatial_max_idx, blob.data.shape[2:])
-            blob.diff[example_i, feature_idx, row, col] = mult * blob.data[example_i, feature_idx, row, col]
-        else:
-            raise Exception('source/target blobs should be shaped as ' \
-                            'if from a conv/fc layer')
-
-
-    def _compute_weights(self, top_layer_name, top_blob_name,
+    def _weight_child_neurons(self, top_layer_name, top_blob_name,
                       bottom_layer_name, bottom_blob_name, act_id,
                       num_children):
         '''
-        Compute weights between the given top and bottom layers.
+        Weight bottom blob neurons with respect to top blob activations.
 
         Returns a 1d numpy array with one entry for each feature in the bottom blob.
         Higher values indicate the top blob is more strongly connected to that feature.
         '''
         bottom_blob = self.net.blobs[bottom_blob_name]
         top_blob = self.net.blobs[top_blob_name]
-        img_blob = self.net.blobs[self.image_blob]
+        img_blob = self.net.blobs[self.config['image_blob_name']]
 
         dag = self.dag
         top_node = self._node_name([top_blob_name], [act_id])
@@ -417,6 +442,19 @@ class VisTree(object):
         return abs(edge_weights)
 
 
+
+
+
+
+    
+    # Extras (TODO)
+
+
+
+
+
+    def _node_name(self, blob_path, act_ids):
+        return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
 
     def tree(self, top_layer_id, act_id):
         '''
@@ -481,7 +519,7 @@ class VisTree(object):
         '''
         dag = self.dag
         top_node = self._node_name([top_blob_name], [act_id])
-        img_blob = self.net.blobs[self.image_blob]
+        img_blob = self.net.blobs[self.config['image_blob_name']]
         expanded_nodes = []
 
         if top_node not in dag:

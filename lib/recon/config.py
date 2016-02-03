@@ -10,7 +10,8 @@ net_config = {
     'batch_size': 20,
     'mean_fname': 'caffe/data/ilsvrc12/imagenet_mean.binaryproto',
     'labels_fname': 'caffe/data/ilsvrc12/synset_words.txt',
-    'img_blob_name': 'data',
+    'image_blob_name': 'data',
+    'prob_blob_name': 'data',
     'data_layer_name': 'data',
     'blob_multipliers': {
         'conv1': 1.0,
