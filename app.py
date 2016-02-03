@@ -21,36 +21,89 @@ from recon import *
 from recon.config import config
 
 
+######################################
+# Retrieve cached images
 
 @app.route('/imgs/feat/<path:path>')
 def img_feat(path):
-    return send_file(pth.join('data/feat/', path))
+    '''
+    Return an image with typical patches for this feature
 
+    # Args
+        path: Name of the feature file for the visualized neuron
+    '''
+    return send_file(pth.join('data/feat/', path))
 
 @app.route('/imgs/gallery/<path:path>')
 def img_gallery(path):
+    '''
+    Show that this
+    
+    '''
     return send_file(pth.join('data/gallery/', path))
 
 
+######################################
+# Serve complete html pages
+
 @app.route('/gallery')
 def gallery():
+    '''
+    Return the main/starter page that shows all available images
+    '''
     img_fnames = [pth.basename(fname) for fname in glob.glob('data/gallery/*')]
     # TODO: better/parameterized defaults
     return render_template('gallery.html', img_fnames=img_fnames, imgs_per_row=5)
 
+@app.route('/vis/<path:img_id>/overview')
+def vis_overview(img_id):
+    '''
+    Overview visualization of top activations for each layer w.r.t. a particular image
+
+    # Args
+        img_id: Name of image
+    '''
+    num_maxes = int(request.args.get('num_maxes', '5'))
+    tree = get_vis_tree(net_id, img_id)
+    layers = [dict(layer) for layer in tree.config['layers'].itervalues() if layer['include_in_overview']]
+    layers.sort(key=lambda l: -l['idx'])
+    for layer in layers:
+        blob_name = layer['blob_name']
+        max_act_ids = get_vis_tree(net_id, img_id).max_blob_idxs(blob_name)[:num_maxes]
+        max_acts = []
+        for act_id in max_act_ids:
+            path = [(blob_name, act_id)]
+            max_acts.append({'act_id': act_id, 'path_id': _get_path_id(path)})
+        layer['max_acts'] = max_acts
+        print max_acts
+    return render_template('overview.html', layers=layers, imgs_per_row=5, img_id=img_id)
 
 @app.route('/vis/<path:img_id>')
 def vis(img_id):
+    '''
+    Detailed vis page for a particular nueron (specified as JSON POST data)
+
+    # Args
+        img_id: Name of image
+    '''
     blob_name = request.args.get('blob_name', '')
     act_id = int(request.args.get('act_id', ''))
-    return render_template('vis.html', blob_name=blob_name, act_id=act_id, img_id=img_id)
+    root_path = [(blob_name, act_id)]
+    root_id = _get_path_id(root_path)
+    return render_template('vis.html',
+                           root_path_id=root_id,
+                           img_id=img_id,
+                           root_blob_name=blob_name,
+                           root_act_id=act_id)
 
+
+######################################
+# Retrieve/compute misc visualization details
 
 @app.route('/vis/<path:img_id>/img.jpg')
 def vis_img(img_id):
     img = get_vis_tree(net_id, img_id).image()
     return send_img(img, 'img.jpg')
-
 
 @app.route('/vis/<path:img_id>/labels.json')
 def vis_labels(img_id):
@@ -59,74 +112,60 @@ def vis_labels(img_id):
     return jsonify(labels=label_str)
 
 
-@app.route('/vis/<path:img_id>/overview')
-def vis_overview(img_id):
-    num_maxes = int(request.args.get('num_maxes', '5'))
+######################################
+# Interact with the tree of related gradient images.
+# The root of this tree is the gradient image of a particular neuron.
+# TODO: describe more
+
+@app.route('/vis/<path:img_id>/tree/children')
+def json_tree_children(img_id):
+    '''
+    Retrieve the info of a node's children.
+    '''
+    path_id = request.args.get('path_id', None)
+    path = _get_path(path_id)
     tree = get_vis_tree(net_id, img_id)
-    layers = [layer for layer in tree.config['layers'].itervalues() if layer['include_in_overview']]
-    layers.sort(key=lambda l: -l['idx'])
-    for layer in layers:
-        blob_name = layer['blob_name']
-        maxes = get_vis_tree(net_id, img_id).max_idxs(blob_name)[:num_maxes]
-        layer['maxes'] = maxes
-    return render_template('overview.html', layers=layers, imgs_per_row=5, img_id=img_id)
-
-
-@app.route('/vis/<path:img_id>/tree/get')
-def json_tree(img_id):
-    blob_name = request.args.get('blob_name', '')
-    act_id = int(request.args.get('act_id', ''))
-    # should input layer_name, not blob_name
-    tree = get_vis_tree(net_id, img_id).tree(blob_name, act_id)
-    return jsonify(tree)
-
-
-@app.route('/vis/<path:img_id>/tree/maxes')
-def json_tree_maxes(img_id):
-    blob_name = request.args.get('blob_name', '')
-    maxes = get_vis_tree(net_id, img_id).max_idxs(blob_name)[:5]
-    return jsonify(maxes=maxes)
-
-
-@app.route('/vis/<path:img_id>/tree/expand')
-def json_tree_expand(img_id):
-    blob_name = request.args.get('blob_name', '')
-    act_id = int(request.args.get('act_id', ''))
-    # should input layer_name, not blob_name
-    children = get_vis_tree(net_id, img_id).expand(blob_name, act_id)
-    return jsonify(children=children)
-
+    children = tree.children_from_path(path)
+    child_path_ids = [{'path_id': _get_path_id(child['path'])} for child in children]
+    return jsonify({'children': child_path_ids})
 
 @app.route('/vis/<path:img_id>/tree/reconstruction')
 def json_tree_reconstruction(img_id):
-    blob_name = request.args.get('blob_name', '')
-    act_id = int(request.args.get('act_id', ''))
-    layer_name = config['nets'][net_id]['blob_name_to_layer_name'][blob_name]
-    # TODO: clarify blob vs layer semantics, right now 'path' is layers, 'blob_name' is blobs
-    path = request.args.getlist('path')
-    path_ids = map(int, request.args.getlist('path_id'))
-    recons = get_vis_tree(net_id, img_id).reconstruction(path + [layer_name], [path_ids + [act_id]])[0]
-    return send_img(recons['reconstruction'], 'recon_{}_{}.jpg'.format(blob_name, act_id))
+    '''
+    Retrieve the reconstruction for a particular path
+    '''
+    path_id = request.args.get('path_id', None)
+    path = _get_path(path_id)
+    recons = get_vis_tree(net_id, img_id).reconstruction(path)
+    return send_img(recons, 'recon_{}.jpg'.format(path_id))
 
 
-@app.route('/vis/<path:img_id>/tree/feature_map')
-def json_tree_feature_map(img_id):
-    blob_name = request.args.get('blob_name', '')
-    act_id = int(request.args.get('act_id', ''))
-    feat_map = get_vis_tree(net_id, img_id).feature_map(blob_name, act_id)
-    return send_img(feat_map, 'fmap_{}_{}.jpg'.format(blob_name, act_id))
-
+######################################
+# Helpers
 
 def send_img(img, fname):
+    '''
+    Serve a numpy array as a jpeg image
+
+    # Args
+        img: Image (numpy array)
+        fname: Name of the sent file
+    '''
     f = io.BytesIO()
     scipy.misc.imsave(f, img, format='jpeg')
     f.seek(0)
     return send_file(f, attachment_filename=fname,
                      mimetype='image/jpeg')
 
-
 _vis_trees = {}
 def get_vis_tree(net_id, img_id):
+    '''
+    Retrieve the tree of reconstructions for the net and image
+
+    # Args
+        net_id: Net name (see lib/recon/config.py)
+        img_id: Image name
+    '''
     key = '{}_{}'.format(net_id, img_id)
     if key in _vis_trees:
         return _vis_trees[key]
@@ -136,6 +175,32 @@ def get_vis_tree(net_id, img_id):
         vis_tree = VisTree(net_id, img_fname)
         _vis_trees[key] = vis_tree
         return vis_tree
+
+# Keep track of paths through the reconstruction tree with one
+# string identifier. This makes it easier to handle paths as identifiers
+# in javascript. I can pass around one string instead of a JSON list.
+# Especially important for <img src="GET_url?path_id=">
+# TODO: now assume there is a 1-1 mapping
+_paths_by_id = {}
+def _check_path(path):
+    for node in path:
+        for part in map(str, node):
+            if '-' in part or '_' in part:
+                raise Exception('Invalid node... can not contain "-" or "_"')
+
+def _get_path_id(path):
+    _check_path(path)
+    path_id = '-'.join(['_'.join(map(str, node)) for node in path])
+    _paths_by_id[path_id] = path
+    return path_id
+
+def _get_path(path_id):
+    if path_id in _paths_by_id:
+        return _paths_by_id[path_id]
+    path = [node.split('_') for node in path_id.split('-')]
+    _check_path(path)
+    _paths_by_id[path_id] = path
+    return path
 
 
 

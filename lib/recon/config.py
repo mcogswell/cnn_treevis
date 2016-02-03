@@ -22,77 +22,17 @@ net_config = {
         'fc7': 4096.0,
         'fc8': 1000.0,
     },
-    # This describes which pairs of caffe layers have (weighted)
-    # edges between them for vis purposes. (see Reconstructor.graph)
-    # Edges are directed in the same direction as forward prop
-    'edges': [
-        { # layer end backward at
-          'source_layer': 'conv1',
-          # layer to start backward from
-          'target_layer': 'relu1',
-          # blob with source neurons (probably a bottom of source_layer)
-          'source_blob': 'data',
-          # blob with target neurons
-          'target_blob': 'conv1', },
-        { 'source_layer': 'conv2',
-          'target_layer': 'relu2',
-          'source_blob': 'norm1',
-          'target_blob': 'conv2', },
-        { 'source_layer': 'conv3',
-          'target_layer': 'relu3',
-          'source_blob': 'norm2',
-          'target_blob': 'conv3', },
-        { 'source_layer': 'conv4',
-          'target_layer': 'relu4',
-          'source_blob': 'conv3',
-          'target_blob': 'conv4', },
-        { 'source_layer': 'conv5',
-          'target_layer': 'relu5',
-          'source_blob': 'conv4',
-          'target_blob': 'conv5', },
-        # TODO: add fully connected layers
-    ],
-    'prev_layer_map': {
-        # TODO: make these work
-        #'fc7': 'fc6',
-        #'fc6': 'conv5',
-        'conv5': 'conv4',
-        'conv4': 'conv3',
-        'conv3': 'conv2',
-        'conv2': 'conv1',
-        'conv1': 'data',
-    },
     'layers': {
-        'fc8':   { 'blob_name': 'fc8',   'layer_name': 'fc8',   'idx': 8, 'include_in_overview': True },
-        'fc7':   { 'blob_name': 'fc7',   'layer_name': 'relu7', 'idx': 7, 'include_in_overview': True },
-        'fc6':   { 'blob_name': 'fc6',   'layer_name': 'relu6', 'idx': 6, 'include_in_overview': True },
-        'conv5': { 'blob_name': 'conv5', 'layer_name': 'relu5', 'idx': 5, 'include_in_overview': True },
-        'conv4': { 'blob_name': 'conv4', 'layer_name': 'relu4', 'idx': 4, 'include_in_overview': True },
-        'conv3': { 'blob_name': 'conv3', 'layer_name': 'relu3', 'idx': 3, 'include_in_overview': True },
-        'conv2': { 'blob_name': 'conv2', 'layer_name': 'relu2', 'idx': 2, 'include_in_overview': True },
-        'conv1': { 'blob_name': 'conv1', 'layer_name': 'relu1', 'idx': 1, 'include_in_overview': True },
-        'data':  { 'blob_name': 'data',  'layer_name': 'NA',    'idx': 0, 'include_in_overview': False },
+        'fc8':   { 'blob_name': 'fc8',   'layer_name': 'fc8',   'idx': 8, 'prev_layer_id': 'fc7',   'include_in_overview': True },
+        'fc7':   { 'blob_name': 'fc7',   'layer_name': 'relu7', 'idx': 7, 'prev_layer_id': 'fc6',   'include_in_overview': True },
+        'fc6':   { 'blob_name': 'fc6',   'layer_name': 'relu6', 'idx': 6, 'prev_layer_id': 'conv5', 'include_in_overview': True },
+        'conv5': { 'blob_name': 'conv5', 'layer_name': 'relu5', 'idx': 5, 'prev_layer_id': 'conv4', 'include_in_overview': True },
+        'conv4': { 'blob_name': 'conv4', 'layer_name': 'relu4', 'idx': 4, 'prev_layer_id': 'conv3', 'include_in_overview': True },
+        'conv3': { 'blob_name': 'conv3', 'layer_name': 'relu3', 'idx': 3, 'prev_layer_id': 'conv2', 'include_in_overview': True },
+        'conv2': { 'blob_name': 'conv2', 'layer_name': 'relu2', 'idx': 2, 'prev_layer_id': 'conv1', 'include_in_overview': True },
+        'conv1': { 'blob_name': 'conv1', 'layer_name': 'relu1', 'idx': 1, 'prev_layer_id': 'data',  'include_in_overview': True },
+        'data':  { 'blob_name': 'data',  'layer_name': 'NA',    'idx': 0, 'prev_layer_id': None,    'include_in_overview': False },
     },
-    'layer_to_blob': {
-        'fc8': 'fc8',
-        'relu7': 'fc7',
-        'relu6': 'fc6',
-        'relu5': 'conv5',
-        'relu4': 'conv4',
-        'relu3': 'conv3',
-        'relu2': 'conv2',
-        'relu1': 'conv1',
-    },
-    'blob_name_to_layer_name': {
-        'fc8': 'fc8',
-        'fc7': 'relu7',
-        'fc6': 'relu6',
-        'conv5': 'relu5',
-        'conv4': 'relu4',
-        'conv3': 'relu3',
-        'conv2': 'relu2',
-        'conv1': 'relu1',
-    }
 }
 
 config = edict({
@@ -102,6 +42,7 @@ config = edict({
 },
 'lmdb_map_size': 1000 * (1024**3),
 'nets': {
+    # `net_id`s
     'caffenet_1000': dict({
         'relu_type': relu_backward_types.GUIDED,
         'spec_wdata': 'specs/caffenet_1000_val.prototxt',

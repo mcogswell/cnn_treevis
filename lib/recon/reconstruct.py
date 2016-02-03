@@ -38,10 +38,6 @@ logger = logging.getLogger(config.logger.name)
 
 # main api calls
 
-def canonical_image(net_id, blob_name, feature_idx, k):
-    net = nets[net_id]
-    net.canonical_image(blob_name, feature_idx, k)
-
 
 def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
     '''
@@ -68,8 +64,26 @@ def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
 
 
 class VisTree(object):
+    '''
+    Keep track of explored reconstructions and allow efficient exploration of the space.
+    Try to answer the question "How does this network interpret this image?"
+
+    This actually can keep track of a forest of visualizations. Each tree is rooted at
+    a particular ZF style gradient vis. New nodes are created by expanding an existing
+    node. This creates some children which visualize gradients backpropped from the root,
+    but with the feature map blobs of the children further masked similar to how the
+    root feature map is masked. Keeping track of the nodes in this tree allows visualizations
+    to be computed efficiently in batches instead of one at a time.
+
+    NOTE: ZF means Zeiler/Fergus in reference to "Visualizing and Understanding Convolutional Networks"
+    '''
 
     def __init__(self, net_id, img_fname):
+        '''
+        # Args
+            net_id: Network to inspect (lib/recon/config.py)
+            img_fname: Image to inspect (data/gallery/)
+        '''
         self.net_id = net_id
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=False)
@@ -80,76 +94,43 @@ class VisTree(object):
         self._set_image(img_fname)
         self.net.forward()
         self.dag = nx.DiGraph()
-        # TODO: remove these
-        self.prev_layer_map = {
-            # TODO: make these work
-            'fc8': 'fc7',
-            'fc7': 'fc6',
-            'fc6': 'conv5',
-            'conv5': 'conv4',
-            'conv4': 'conv3',
-            'conv3': 'conv2',
-            'conv2': 'conv1',
-            'conv1': 'data',
-        }
         self._reconstructions = {}
 
+    # Exposed api
+
     def labels(self, top_k=5):
+        '''
+        Return a list of the top k labels assigned to the image
+
+        # Args
+            top_k: Number of labels to return, with most likely first
+        '''
         prob = self.net.blobs[self.prob_blob].data[0].flatten()
         top_idxs = prob.argsort()[::-1][:top_k]
         template = '{} ({:.2f}, {})'
         return [template.format(self._labels[i], prob[i], i) for i in top_idxs]
 
     def image(self):
+        '''
+        Return the image visualized by this net
+        '''
         img_blob = self.net.blobs[self.image_blob]
         return self._showable(img_blob.data[0])
 
-    def _set_image(self, img_fname):
-        # remove alpha channel if present
-        img = io.imread(img_fname)[:, :, :3]
-        img = img_as_ubyte(trans.resize(img, [227, 227]))
-        img = self._unshowable(img)
-        self._replicate_first_image(img)
-
-    def _unshowable(self, img):
-        img = img.astype(np.uint8)
-        img = img[:, :, ::-1] - self.mean
-        img = img.transpose([2, 0, 1])
-        return img
-
-    def _replicate_first_image(self, img=None):
-        img_blob = self.net.blobs[self.image_blob]
-        if img is not None:
-            img_blob.data[0] = img
-        for i in range(1, img_blob.data.shape[0]):
-            img_blob.data[i] = img_blob.data[0]
-
-
-    def _node_name(self, blob_path, act_ids):
-        return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
-
-    def feature_map(self, blob_name, act_id):
-        feat_blob = self.net.blobs[blob_name]
-        feat_map = feat_blob.data[0, act_id]
-        feat_map = abs(feat_map)
-        feat_map = feat_map.clip(0, 255).astype(np.uint8)
-        return feat_map
-
-    def reconstruction(self, layer_path, feature_paths):
+    def reconstruction(self, path):
         '''
-        Visualize the given blob/feature pairs in the deconv fashion.
-        All backprop happens from layer_name to the input. Starting backprop from multiple
-        is not yet supported.
+        Visualize the given blob/feature pairs in the deconv fashion with layers
+        specified in `path` masked to specific features.
 
-        If `paths` is specified then, for each item, it should specify a list of blob names
-        from root to this node. Only gradient information from those blobs will
-        be backpropped. TODO: better explain
+        
 
         ZF vis is a special case where layer_path = [top_layer]
 
         Return a list of dicts, each with a 'reconstruction' and 'bbox' key.
         '''
-        blob_path = [self.config['layer_to_blob'][layer] for layer in layer_path]
+        # TODO: temporary to test new api
+        return self.image()
+        blob_path = [self.layer_to_blob[layer] for layer in layer_path]
         nodes = []
         nodes_need_backward = []
         filtered_feature_paths = []
@@ -197,6 +178,163 @@ class VisTree(object):
 
         return [self._reconstructions[node] for node in nodes]
 
+    def max_blob_idxs(self, blob_name):
+        '''
+        Return a list of feature indices which maximally activate the blob.
+        '''
+        blob = self.net.blobs[blob_name]
+        if len(blob.data.shape) == 2:
+            features = blob.data
+        elif len(blob.data.shape) == 4:
+            # TODO: might want to do this in different ways
+            features = blob.data.max(axis=(2, 3))
+        print features.shape
+        return list(features[0].argsort()[::-1])
+
+    def children_from_path(self, path, num_children=5):
+        #max_nodes = self._max_children(path)
+        # TODO
+        return []
+
+
+    # Helpers
+
+    def _set_image(self, img_fname):
+        # remove alpha channel if present
+        img = io.imread(img_fname)[:, :, :3]
+        img = img_as_ubyte(trans.resize(img, [227, 227]))
+        img = self._unshowable(img)
+        self._replicate_first_image(img)
+
+    def _unshowable(self, img):
+        img = img.astype(np.uint8)
+        img = img[:, :, ::-1] - self.mean
+        img = img.transpose([2, 0, 1])
+        return img
+
+    def _replicate_first_image(self, img=None):
+        img_blob = self.net.blobs[self.image_blob]
+        if img is not None:
+            img_blob.data[0] = img
+        for i in range(1, img_blob.data.shape[0]):
+            img_blob.data[i] = img_blob.data[0]
+
+    def _showable(self, img, rescale=False):
+        # TODO: don't always assume images in the net are BGR
+        img = img.transpose([1, 2, 0])
+        img = (img + self.mean)[:, :, ::-1]
+        if rescale and (img.min() < 0 or 255 < img.max()):
+            img = rescale_intensity(img)
+        img = img.clip(0, 255).astype(np.uint8)
+        return img
+
+    def _to_bbox(self, img):
+        '''
+        Take an image which is mostly 0s and return the smallest
+        bounding box which contains all non-0 entries.
+
+        img     array of size (c, h, w)
+        '''
+        # (num, channel, height, width)
+        # TODO: don't always assume the reconstruction comes from a (4-tensor) conv layer
+        if True: #len(blob_idx) == 4:
+            #row, col = blob_idx[-2:]
+            m = abs(img).max(axis=0)
+            linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
+            linear_idxs = linear_idx_map[m > 0]
+            rows = (linear_idxs // m.shape[0])
+            cols = (linear_idxs % m.shape[0])
+            if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
+                raise Exception('TODO: not supported for now')
+                #top_left = row, col
+                #bottom_right = row, col
+            else:
+                top_left = (rows.min(), cols.min())
+                bottom_right = (rows.max(), cols.max())
+            return (top_left, bottom_right)
+        # (num, channel)
+        #elif len(blob_idx) == 2:
+        #    return ((0, 0), (img.shape[1]-1, img.shape[2]-1))
+        else:
+            raise Exception('do not know how to create a bounding box from ' \
+                            'blob_idx {}'.format(blob_idx))
+
+    @staticmethod
+    def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
+        '''
+        Return a new NetParameter with ReLUs suited for visualization
+        and a setup to always force backprop.
+        '''
+        net_param = cpb.NetParameter()
+        net_param.CopyFrom(in_param)
+        if len(net_param.layer) == 0:
+            raise Exception('Network must have at least one layer. Note that ' \
+                            'old net specs (with "layers" instead of "layer") ' \
+                            'are not yet supported')
+
+        # set relu backprop type and generate temp net
+        for layer in net_param.layer:
+            if layer.type == 'ReLU':
+                layer.relu_param.backprop_type = relu_type
+
+        # otherwise, backprop might not reach the image blob
+        net_param.force_backward = True
+
+        return net_param
+
+    # TODO
+    def _max_children(self, path):
+        pass
+
+    @property
+    def net(self):
+        if not hasattr(self, '_net'):
+            self._net = self._load_net(self.net_param)
+        return self._net
+
+    def _load_param(self, with_data=False):
+        if with_data:
+            spec_fname = self.config.spec_wdata
+        else:
+            spec_fname = self.config.spec_nodata
+        net_param = cpb.NetParameter()
+        with open(spec_fname, 'r') as f:
+            text_format.Merge(f.read(), net_param)
+        return net_param
+
+    def _load_net(self, net_param):
+        '''
+        Takes a network spec file and returns a NamedTemporaryFile which
+        contains the modified spec with ReLUs appropriate for visualization.
+        '''
+        # TODO: also accept file objects instead of just names?
+        net_param = _convert_relus(net_param, relu_type=self.config.relu_type)
+
+        tmpspec = tempfile.NamedTemporaryFile(delete=False)
+        with tmpspec as f:
+            tmpspec.write(text_format.MessageToString(net_param))
+        tmpspec.close()
+
+        return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
+
+    @property
+    def layer_to_blob(self):
+        if not hasattr(self, '_layer_to_blob'):
+            self._layer_to_blob = { l.layer_name: l.blob_name for l in self.config['layers'] }
+        return self._layer_to_blob
+
+
+
+
+    
+    # Extras (TODO)
+
+
+
+
+
+    def _node_name(self, blob_path, act_ids):
+        return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
 
     def filter_feature(self, example_i, feature_idx, blob_name):
         blob = self.net.blobs[blob_name]
@@ -244,7 +382,7 @@ class VisTree(object):
         top_node = self._node_name([top_blob_name], [act_id])
         layer_path = dag.node[top_node]['path'] + [top_layer_name, bottom_layer_name]
         path_ids = dag.node[top_node]['path_ids'] + [act_id]
-        blob_path = [self.config['layer_to_blob'][layer] for layer in layer_path]
+        blob_path = [self.layer_to_blob[layer] for layer in layer_path]
 
         ## set all but 1 pixel of the top diff to 0
         #top_blob.diff[0] = 0
@@ -279,18 +417,6 @@ class VisTree(object):
         return abs(edge_weights)
 
 
-    def max_idxs(self, layer_id):
-        '''
-        Return a list of feature indices which maximally activate the layer.
-        '''
-        blob_name = self.config['layers'][layer_id]['blob_name']
-        blob = self.net.blobs[blob_name]
-        if len(blob.data.shape) == 2:
-            features = blob.data
-        elif len(blob.data.shape) == 4:
-            features = blob.data.max(axis=(2, 3))
-        return list(features[0].argsort()[::-1])
-
 
     def tree(self, top_layer_id, act_id):
         '''
@@ -299,7 +425,7 @@ class VisTree(object):
         '''
         top_layer_name = self.config['layers'][top_layer_id]['layer_name']
         top_blob_name = self.config['layers'][top_layer_id]['blob_name']
-        bottom_layer_id = self.prev_layer_map[top_layer_id]
+        bottom_layer_id = self.config['layers']['prev_layer_id']
         bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
         bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
 
@@ -312,13 +438,28 @@ class VisTree(object):
         return tree_dict
 
 
-    def expand(self, top_layer_id, act_id, num_children=5):
+
+    # TODO??? ... unnecessary
+    def node_from_path(self, path):
         '''
-        Grow the tree by exanding the top num_children nodes from the given activation.
+        Expand the tree to include this path and return info of the last node in the path.
         '''
+        for info in path:
+            blob_name, act_id = info['blob_name'], info['act_id']
+            self._info_to_key
+
+        if node_id in tree:
+            return tree[node_id]
+
+        
+            return self._tracce
+
+
+
+        act_id = path['act_id']
         top_layer_name = self.config['layers'][top_layer_id]['layer_name']
         top_blob_name = self.config['layers'][top_layer_id]['blob_name']
-        bottom_layer_id = self.prev_layer_map[top_layer_id]
+        bottom_layer_id = self.config['layers']['prev_layer_id']
         bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
         bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
 
@@ -328,7 +469,7 @@ class VisTree(object):
         return expanded_data
 
 
-    def _expand(self, top_layer_name, top_blob_name,
+    def expand_path(self, top_layer_name, top_blob_name,
                 bottom_layer_name, bottom_blob_name, act_id,
                 num_children=5, return_expanded=False):
         '''
@@ -380,104 +521,11 @@ class VisTree(object):
             return top_node
 
 
-    def _showable(self, img, rescale=False):
-        # TODO: don't always assume images in the net are BGR
-        img = img.transpose([1, 2, 0])
-        img = (img + self.mean)[:, :, ::-1]
-        if rescale and (img.min() < 0 or 255 < img.max()):
-            img = rescale_intensity(img)
-        img = img.clip(0, 255).astype(np.uint8)
-        return img
-
-    def _to_bbox(self, img):
-        '''
-        Take an image which is mostly 0s and return the smallest
-        bounding box which contains all non-0 entries.
-
-        img     array of size (c, h, w)
-        '''
-        # (num, channel, height, width)
-        # TODO: don't always assume the reconstruction comes from a (4-tensor) conv layer
-        if True: #len(blob_idx) == 4:
-            #row, col = blob_idx[-2:]
-            m = abs(img).max(axis=0)
-            linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
-            linear_idxs = linear_idx_map[m > 0]
-            rows = (linear_idxs // m.shape[0])
-            cols = (linear_idxs % m.shape[0])
-            if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
-                raise Exception('TODO: not supported for now')
-                #top_left = row, col
-                #bottom_right = row, col
-            else:
-                top_left = (rows.min(), cols.min())
-                bottom_right = (rows.max(), cols.max())
-            return (top_left, bottom_right)
-        # (num, channel)
-        #elif len(blob_idx) == 2:
-        #    return ((0, 0), (img.shape[1]-1, img.shape[2]-1))
-        else:
-            raise Exception('do not know how to create a bounding box from ' \
-                            'blob_idx {}'.format(blob_idx))
-
-
-    @staticmethod
-    def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
-        '''
-        Return a new NetParameter with ReLUs suited for visualization
-        and a setup to always force backprop.
-        '''
-        net_param = cpb.NetParameter()
-        net_param.CopyFrom(in_param)
-        if len(net_param.layer) == 0:
-            raise Exception('Network must have at least one layer. Note that ' \
-                            'old net specs (with "layers" instead of "layer") ' \
-                            'are not yet supported')
-
-        # set relu backprop type and generate temp net
-        for layer in net_param.layer:
-            if layer.type == 'ReLU':
-                layer.relu_param.backprop_type = relu_type
-
-        # otherwise, backprop might not reach the image blob
-        net_param.force_backward = True
-
-        return net_param
-
-    @property
-    def net(self):
-        if not hasattr(self, '_net'):
-            self._net = self._load_net(self.net_param)
-        return self._net
-
-    def _load_param(self, with_data=False):
-        if with_data:
-            spec_fname = self.config.spec_wdata
-        else:
-            spec_fname = self.config.spec_nodata
-        net_param = cpb.NetParameter()
-        with open(spec_fname, 'r') as f:
-            text_format.Merge(f.read(), net_param)
-        return net_param
-
-    def _load_net(self, net_param):
-        '''
-        Takes a network spec file and returns a NamedTemporaryFile which
-        contains the modified spec with ReLUs appropriate for visualization.
-        '''
-        # TODO: also accept file objects instead of just names?
-        net_param = _convert_relus(net_param, relu_type=self.config.relu_type)
-
-        tmpspec = tempfile.NamedTemporaryFile(delete=False)
-        with tmpspec as f:
-            tmpspec.write(text_format.MessageToString(net_param))
-        tmpspec.close()
-
-        return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
 
 
 
 
+# TODO: refactor
 def build_max_act_db(blob_name, config, k=5):
     # don't use self.net, which a deploy net (data comes from python)
 

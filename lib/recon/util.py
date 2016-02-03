@@ -11,8 +11,6 @@ import caffe.proto.caffe_pb2 as cpb
 
 from recon.config import config
 
-from cogswell import keyboard
-
 
 def load_ilsvrc12_labels(fname):
     with open(fname, 'r') as f:

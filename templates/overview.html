@@ -19,14 +19,14 @@
 <tbody>
 {% for layer in layers %}
     <tr> <td> {{layer.blob_name}} </td> </tr>
-    {% for act_id in layer.maxes %}
+    {% for max_act in layer.max_acts %}
         {% if loop.index0 % imgs_per_row == 0 and loop.index0 > 0 %}
         <tr>
         {% endif %}
         <td>
-            {{layer.blob_name}}_{{act_id}}
-            <a href="/vis/{{img_id}}?blob_name={{layer.blob_name}}&act_id={{act_id}}">
-            <img class="resize" src="/vis/{{img_id}}/tree/reconstruction?blob_name={{layer.blob_name}}&act_id={{act_id}}"></img>
+            {{layer.blob_name}}_{{max_act.act_id}}
+            <a href="/vis/{{img_id}}?blob_name={{layer.blob_name}}&act_id={{max_act.act_id}}">
+            <img class="resize" src="/vis/{{img_id}}/tree/reconstruction?path_id={{max_act.path_id}}"></img>
             </a>
         </td>
         {% if loop.index0 % imgs_per_row == imgs_per_row - 1 %}

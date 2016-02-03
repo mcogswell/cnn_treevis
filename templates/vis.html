@@ -71,16 +71,23 @@
  * bottom left are hidden or not.
  */
 
-var i = 0,
-    duration = 750,
-    root,
-    nodeHeight = 200,
-    nodeWidth = 200,
-    nodeMargin = {width: 30, height: 30};
-
 var margin = {top: nodeHeight/2 + 90, right: nodeWidth/2 + 200, bottom: 20, left: nodeWidth/2 + 200},
     width = screen.width - margin.right - margin.left,
     height = screen.height - margin.top - margin.bottom;
+
+var node_counter = 0,
+    duration = 750,
+    root = {
+      x0: height / 2,
+      y0: 0,
+      path_id: "{{root_path_id}}",
+      path: [["{{blob_name}}", {{act_id}}]],
+      blob_name: "{{blob_name}}",
+      act_id: {{act_id}}
+    },
+    nodeHeight = 200,
+    nodeWidth = 200,
+    nodeMargin = {width: 30, height: 30};
 
 var tree = d3.layout.tree()
     //.size([height, width])
@@ -123,22 +130,8 @@ var svg = svg_root.append("g")
     .attr("transform", "translate(" + (margin.left + width/2) + "," + margin.top + ")")
     .attr("id", "svg");
 
-d3.json(base_url + "/tree/get?blob_name={{blob_name}}&act_id={{act_id}}", function(error, flare) {
-  if (error) throw error;
-
-  root = flare;
-  root.x0 = height / 2;
-  root.y0 = 0;
-
-  function collapse(d) {
-    if (d.children) {
-      d._children = d.children;
-      d._children.forEach(collapse);
-      d.children = null;
-    }
-  }
-
-  root.children.forEach(collapse);
+// update the root when ready
+$(function() {
   update(root);
 });
 
@@ -159,7 +152,7 @@ function update(source) {
 
   // Update the nodes…
   var node = svg.selectAll("g.node")
-      .data(nodes, function(d) { return d.id || (d.id = ++i); });
+      .data(nodes, function(d) { return d.id || (d.id = ++node_counter); });
 
   // Enter any new nodes at the parent's previous position.
   var nodeEnter = node.enter().append("g")
@@ -179,12 +172,7 @@ function update(source) {
       .attr("width", nodeWidth)
       .attr("height", nodeHeight)
       .attr("xlink:href", function(d) {
-          var url = base_url + "/tree/reconstruction?";
-          for (var i = 0; i < d.path.length; i++) {
-            url += "path=" + d.path[i] + "&";
-            url += "path_id=" + d.path_ids[i] + "&";
-          }
-          return url + "blob_name=" + d.blob_name + "&act_id=" + d.act_id;
+          return base_url + "/tree/reconstruction?path_id=" + d.path_id;
       })
       .on("mouseenter", function(d) {
         d3.select("#feat_" + d.blob_name + "_" + d.act_id)
@@ -383,13 +371,12 @@ function click(d) {
     d.children = d._children;
     d._children = null;
   } else {
-    d3.json(base_url + "/tree/expand?blob_name=" + d.blob_name + "&act_id=" + d.act_id, function(error, obj) {
-      if (error) throw error;
-      d.children = obj.children;
-      update(d);
-    });
+    d3.json(base_url + "/tree/children?path_id=" + d.path_id, function(error, obj) {
+        if (error) throw error;
+        d.children = obj.children;
+        update(d);
+      });
   }
-  update(d);
 }
 
 </script>
