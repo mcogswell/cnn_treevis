@@ -1,8 +1,6 @@
 release TODOs
 ===
 
-* Read through and delete notes.md
-
 * Make both net and image context apparent in URL
 
 * Enable specification of GPU
@@ -13,8 +11,6 @@ release TODOs
 * create gifs and put in README
 
 * Try fooling around with masking intensity options
-
-* make buttons visible sometimes
 
 * go through TODOs in code
 
