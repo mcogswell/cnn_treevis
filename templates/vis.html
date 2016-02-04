@@ -1,61 +1,9 @@
 <!DOCTYPE html>
+<head>
 <meta charset="utf-8">
 <title>Tree Example</title>
-<style>
-
-.node {
-  cursor: pointer;
-}
-
-.node circle {
-  fill: #fff;
-  stroke: steelblue;
-  stroke-width: 1.5px;
-}
-
-.node text {
-  font: 20px sans-serif;
-}
-
-.link {
-  fill: none;
-  stroke: #333;
-  stroke-width: 4px;
-}
-
-.featvis {
-  pointer-events: none;
-}
-
-.base_div {
-  position: fixed;
-  bottom: 10px;
-  left: 10px;
-  z-index: -1;
-}
-
-.base_div img {
-  float: left;
-  margin-right: 10px;
-  width: 150px;
-  height: 150px;
-}
-
-.base_div div {
-  float: right;
-  font: 13px sans-serif;
-}
-
-.noselect {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  -khtml-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-
-</style>
+<link rel="stylesheet" href="/static/vis_style.css">
+</head>
 <body>
 <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
@@ -197,13 +145,9 @@ function update(source) {
       .attr("transform", function(d) { return "translate(" + (-nodeWidth / 2) + "," + (-nodeHeight / 2 - 10) + ")"; });
 
   // toggle opacity/position of feature vis 
-  reconHeader.append("rect")
-      .attr("height", 30)
-      .attr("width", 50)
-      .attr("x", 100)
-      .attr("y", -20)
-      .attr("fill-opacity", 0.0)
-      .attr("fill", "black")
+  var featToggle = reconHeader.append("g")
+      .attr("transform", "translate(100, -20)")
+      .attr("class", "button")
       .on("click", function(d) {
           var id = "feat_" + d.blob_name + "_" + d.act_id;
           d3.select("#" + id)
@@ -256,20 +200,28 @@ function update(source) {
               }
             });
       });
+  featToggle.append("rect")
+      .attr("height", 30)
+      .attr("width", 50);
+  featToggle.append("text")
+      .html('<tspan x="0.2em" dy=0.9em>Toggle</tspan> <tspan x="0.2em" dy=1.4em>Feat</tspan>')
+      .attr("class", "noselect");
 
   // toggle opacity/position of feature vis 
-  reconHeader.append("rect")
-      .attr("height", 30)
-      .attr("width", 50)
-      .attr("x", 150)
-      .attr("y", -20)
-      .attr("fill-opacity", 0.0)
-      .attr("fill", "cyan")
+  var removeNode = reconHeader.append("g")
+      .attr("transform", "translate(150, -20)")
+      .attr("class", "button")
       .on("click", function(d) {
         var idx = d.parent.children.indexOf(d);
         d.parent.children.splice(idx, 1);
         update(d.parent);
       });
+  removeNode.append("rect")
+      .attr("height", 30)
+      .attr("width", 50);
+  removeNode.append("text")
+      .html('<tspan x="0.2em" dy=0.9em>Remove</tspan>')
+      .attr("class", "noselect");
 
   reconHeader.append("text")
       .attr("height", 10)

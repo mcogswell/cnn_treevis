@@ -1,0 +1,62 @@
+.node {
+  cursor: pointer;
+}
+
+.node circle {
+  fill: #fff;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+.node text {
+  font: 20px sans-serif;
+}
+
+.link {
+  fill: none;
+  stroke: #333;
+  stroke-width: 4px;
+}
+
+.featvis {
+  pointer-events: none;
+}
+
+.base_div {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  z-index: -1;
+}
+
+.base_div img {
+  float: left;
+  margin-right: 10px;
+  width: 150px;
+  height: 150px;
+}
+
+.base_div div {
+  float: right;
+  font: 13px sans-serif;
+}
+
+.noselect {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.button rect {
+  fill: white;
+  fill-opacity: 1;
+  stroke: black;
+  stroke-width: 1pt;
+}
+
+.button text {
+  font-size: 75%;
+}

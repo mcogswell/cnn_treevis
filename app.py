@@ -11,7 +11,7 @@ import scipy
 
 from jinja2 import Template
 import flask
-from flask import Flask, request, render_template, send_file, jsonify, url_for
+from flask import Flask, request, render_template, send_file, jsonify, url_for, send_from_directory
 app = Flask(__name__)
 
 from urllib import unquote
@@ -22,12 +22,13 @@ from recon.config import config
 
 
 ######################################
-# Retrieve cached images
+# Retrieve cached images and static files
 
 @app.route('/imgs/feat/<path:path>')
 def img_feat(path):
     '''
-    Return an image with typical patches for this feature
+    Return an image with a grid of deconv vis's and corresponding patches
+    which are typical patches for this feature
 
     # Args
         path: Name of the feature file for the visualized neuron
@@ -37,10 +38,16 @@ def img_feat(path):
 @app.route('/imgs/gallery/<path:path>')
 def img_gallery(path):
     '''
-    Show that this
-    
+    Serve images from the gallery (in the `data/gallery/` directory)
+
+    # Args
+        path: image name relative to gallery directory
     '''
     return send_file(pth.join('data/gallery/', path))
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
 
 
 ######################################
@@ -49,10 +56,9 @@ def img_gallery(path):
 @app.route('/gallery')
 def gallery():
     '''
-    Return the main/starter page that shows all available images
+    Show all available images
     '''
     img_fnames = [pth.basename(fname) for fname in glob.glob('data/gallery/*')]
-    # TODO: better/parameterized defaults
     return render_template('gallery.html', img_fnames=img_fnames, imgs_per_row=5)
 
 @app.route('/vis/<path:img_id>/overview')
@@ -101,11 +107,23 @@ def vis(img_id):
 
 @app.route('/vis/<path:img_id>/img.jpg')
 def vis_img(img_id):
+    '''
+    Serve the visualized image (resized for network).
+
+    # Args
+        img_id: Name of image
+    '''
     img = get_vis_tree(net_id, img_id).image()
     return send_img(img, 'img.jpg')
 
 @app.route('/vis/<path:img_id>/labels.json')
 def vis_labels(img_id):
+    '''
+    Get the CNN's top labels for this image.
+
+    # Args
+        img_id: Name of image
+    '''
     labels = get_vis_tree(net_id, img_id).labels()
     label_str = ''.join(['<p>' + label + '</p>' for label in labels])
     return jsonify(labels=label_str)
@@ -120,6 +138,9 @@ def vis_labels(img_id):
 def json_tree_children(img_id):
     '''
     Retrieve the info of a node's children.
+
+    # Args
+        img_id: Name of image
     '''
     path_id = request.args.get('path_id', None)
     path = get_path(path_id)
@@ -133,6 +154,9 @@ def json_tree_children(img_id):
 def json_tree_reconstruction(img_id):
     '''
     Retrieve the reconstruction for a particular path
+
+    # Args
+        img_id: Name of image
     '''
     path_id = request.args.get('path_id', None)
     path = get_path(path_id)
