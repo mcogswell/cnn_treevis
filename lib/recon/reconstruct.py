@@ -36,9 +36,6 @@ from recon.util import load_mean_image, load_ilsvrc12_labels
 import logging
 logger = logging.getLogger(config.logger.name)
 
-# main api calls
-
-
 
 # Keep track of paths through the reconstruction tree with one
 # string identifier. This makes it easier to handle paths as identifiers
@@ -66,7 +63,6 @@ def get_path(path_id):
     _paths_by_id[path_id] = path
     return path
 
-
 def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
     '''
     Return a new NetParameter with ReLUs suited for visualization
@@ -88,7 +84,6 @@ def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
     net_param.force_backward = True
 
     return net_param
-
 
 
 class VisTree(object):
@@ -126,7 +121,8 @@ class VisTree(object):
         self.dag = nx.DiGraph()
         self._reconstructions = {}
 
-    # Exposed api
+    #############################
+    # Public api
 
     def labels(self, top_k=5):
         '''
@@ -152,42 +148,21 @@ class VisTree(object):
         Visualize the given blob/feature pairs in the deconv fashion with layers
         specified in `path` masked to specific features.
 
-        
+        ZF vis is a special case where path consists of one node: [(blob, feature id)]
 
-        ZF vis is a special case where layer_path = [top_layer]
-
-        Return a list of dicts, each with a 'reconstruction' and 'bbox' key.
+        Return a reconstruction image (numpy array)
         '''
-        example_i = 0
+        self._backprop_path(path)
 
-        # backprop, re-focusing on particular features at each step
-        for path_i in range(len(path)):
-            # figure out what to backprop and what to filter
-            top_node = path[path_i]
-            top_id = self.node_to_layer_id(top_node)
-            top_blob_name = self.config['layers'][top_id]['blob_name']
-            top_layer_name = self.config['layers'][top_id]['layer_name']
-            top_act_id = self.node_to_act_id(top_node)
-            is_last_node = (path_i + 1 == len(path))
-            if not is_last_node:
-                bottom_node = path[path_i + 1]
-                bottom_id = self.node_to_layer_id(bottom_node)
-                bottom_layer_name = self.config['layers'][bottom_id]['layer_name']
-            # run filtering
-            if path_i == 0:
-                # TODO: batches might have different layers to start from
-                self.set_max_pixel(example_i, top_act_id, top_blob_name)
-            else:
-                self.filter_feature(example_i, top_act_id, top_blob_name)
-            # run backprop
-            if is_last_node:
-                self.net.backward(start=top_layer_name)
-            else:
-                self.net.backward(start=top_layer_name, end=bottom_layer_name)
+        # finish backprop to image layer
+        top_node = path[-1]
+        top_id = self._node_to_layer_id(top_node)
+        top_layer_name = self.config['layers'][top_id]['layer_name']
+        self.net.backward(start=top_layer_name)
 
         # cache the visualization
         img_blob = self.net.blobs[self.config['image_blob_name']]
-        reconstruction = np.copy(img_blob.diff[example_i, :, :, :])
+        reconstruction = np.copy(img_blob.diff[0, :, :, :])
         # TODO: add bounding box back in
         #bbox = self._to_bbox(reconstruction)
         reconstruction = self._showable(reconstruction)
@@ -197,7 +172,6 @@ class VisTree(object):
             'reconstruction': reconstruction,
             #'bbox': bbox,
         }
-
         return reconstruction
 
     def max_blob_idxs(self, blob_name):
@@ -213,26 +187,58 @@ class VisTree(object):
         return list(features[0].argsort()[::-1])
 
     def children_from_path(self, path, num_children=5):
-        return []
         layers = self.config['layers']
-        top_id = path[-1]
-        top_layer_name = layers[top_id]['layer_name']
-        top_blob_name = layers[top_id]['blob_name']
+        top_id = self._node_to_layer_id(path[-1])
         bottom_id = layers[top_id]['prev_layer_id']
-        bottom_layer_name = layers[bottom_id]['layer_name']
-        bottom_blob_name = layers[bottom_id]['blob_name']
-        #act_id = 
-        weights = self._weight_child_neurons(top_layer_name, top_blob_name,
-                      bottom_layer_name, bottom_blob_name, act_id,
-                      num_children)
-        #max_nodes = self._max_children(path)
-        # TODO
-        return []
+        weights = self._weight_child_neurons(path, bottom_id, num_children)
+        sorted_weights = weights.argsort()[::-1]
+        children = []
+        for child_i in range(num_children):
+            child_path = path + [(bottom_id, sorted_weights[child_i])]
+            children.append({
+                'path': child_path,
+                'blob_name': layers[bottom_id]['blob_name'],
+                'act_id': sorted_weights[child_i],
+            })
+        return children
 
-
+    #############################
     # Helpers
 
-    def filter_feature(self, example_i, feature_idx, blob_name):
+    def _node_to_layer_id(self, node):
+        return node[0]
+
+    def _node_to_act_id(self, node):
+        return int(node[1])
+
+    # deconv vis stuff
+
+    def _backprop_path(self, path):
+        example_i = 0
+
+        # backprop, re-focusing on particular features at each step
+        for path_i in range(len(path)):
+            # figure out what to backprop and what to filter
+            layers = self.config['layers']
+            top_node = path[path_i]
+            top_id = self._node_to_layer_id(top_node)
+            top_blob_name = layers[top_id]['blob_name']
+            top_layer_name = layers[top_id]['layer_name']
+            top_act_id = self._node_to_act_id(top_node)
+            is_last_node = (path_i + 1 == len(path))
+            # run filtering and backprop
+            if path_i == 0:
+                # TODO: batches might have different layers to start from
+                self._set_max_pixel(example_i, top_act_id, top_blob_name)
+            else:
+                self._filter_feature(example_i, top_act_id, top_blob_name)
+            if not is_last_node:
+                bottom_node = path[path_i + 1]
+                bottom_id = self._node_to_layer_id(bottom_node)
+                bottom_layer_name = layers[bottom_id]['layer_name']
+                self.net.backward(start=top_layer_name, end=bottom_layer_name)
+
+    def _filter_feature(self, example_i, feature_idx, blob_name):
         blob = self.net.blobs[blob_name]
         img = blob.diff[example_i]
         total = abs(img).sum()
@@ -246,7 +252,7 @@ class VisTree(object):
         #blob.diff[example_i] *= 20 * mult / total_feature
         blob.diff[example_i] *= mult
 
-    def set_max_pixel(self, example_i, feature_idx, blob_name):
+    def _set_max_pixel(self, example_i, feature_idx, blob_name):
         blob = self.net.blobs[blob_name]
         blob.diff[example_i] = 0
         mult = self.config.blob_multipliers[blob_name]
@@ -259,6 +265,32 @@ class VisTree(object):
         else:
             raise Exception('source/target blobs should be shaped as ' \
                             'if from a conv/fc layer')
+
+    def _weight_child_neurons(self, path, bottom_id, num_children):
+        '''
+        Weight bottom blob neurons with respect to top blob activations.
+
+        Returns a 1d numpy array with one entry for each feature in the bottom blob.
+        Higher values indicate the top blob is more strongly connected to that feature.
+        '''
+        self._backprop_path(path)
+
+        layers = self.config['layers']
+        top_id = self._node_to_layer_id(path[-1])
+        top_layer_name = layers[top_id]['layer_name']
+        bottom_layer_name = layers[bottom_id]['layer_name']
+        bottom_blob_name = layers[bottom_id]['blob_name']
+        self.net.backward(start=top_layer_name, end=bottom_layer_name)
+        bottom_blob = self.net.blobs[bottom_blob_name]
+
+        # compute weights between neurons (backward is needed to do deconvolution on the conv layers)
+        edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
+        if len(edge_weights.shape) == 3:
+            edge_weights = edge_weights.mean(axis=(1, 2))
+        assert len(edge_weights.shape) == 1
+        return abs(edge_weights)
+
+    # Image manipulation
 
     def _set_image(self, img_fname):
         # remove alpha channel if present
@@ -289,63 +321,7 @@ class VisTree(object):
         img = img.clip(0, 255).astype(np.uint8)
         return img
 
-    def _to_bbox(self, img):
-        '''
-        Take an image which is mostly 0s and return the smallest
-        bounding box which contains all non-0 entries.
-
-        img     array of size (c, h, w)
-        '''
-        # (num, channel, height, width)
-        # TODO: don't always assume the reconstruction comes from a (4-tensor) conv layer
-        if True: #len(blob_idx) == 4:
-            #row, col = blob_idx[-2:]
-            m = abs(img).max(axis=0)
-            linear_idx_map = np.arange(np.prod(m.shape)).reshape(m.shape)
-            linear_idxs = linear_idx_map[m > 0]
-            rows = (linear_idxs // m.shape[0])
-            cols = (linear_idxs % m.shape[0])
-            if np.prod(rows.shape) == 0 or np.prod(cols.shape) == 0:
-                raise Exception('TODO: not supported for now')
-                #top_left = row, col
-                #bottom_right = row, col
-            else:
-                top_left = (rows.min(), cols.min())
-                bottom_right = (rows.max(), cols.max())
-            return (top_left, bottom_right)
-        # (num, channel)
-        #elif len(blob_idx) == 2:
-        #    return ((0, 0), (img.shape[1]-1, img.shape[2]-1))
-        else:
-            raise Exception('do not know how to create a bounding box from ' \
-                            'blob_idx {}'.format(blob_idx))
-
-    @staticmethod
-    def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
-        '''
-        Return a new NetParameter with ReLUs suited for visualization
-        and a setup to always force backprop.
-        '''
-        net_param = cpb.NetParameter()
-        net_param.CopyFrom(in_param)
-        if len(net_param.layer) == 0:
-            raise Exception('Network must have at least one layer. Note that ' \
-                            'old net specs (with "layers" instead of "layer") ' \
-                            'are not yet supported')
-
-        # set relu backprop type and generate temp net
-        for layer in net_param.layer:
-            if layer.type == 'ReLU':
-                layer.relu_param.backprop_type = relu_type
-
-        # otherwise, backprop might not reach the image blob
-        net_param.force_backward = True
-
-        return net_param
-
-    # TODO
-    def _max_children(self, path):
-        pass
+    # caffe stuff
 
     @property
     def net(self):
@@ -377,190 +353,6 @@ class VisTree(object):
         tmpspec.close()
 
         return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
-
-    def node_to_layer_id(self, node):
-        return node[0]
-
-    def node_to_act_id(self, node):
-        return int(node[1])
-
-    @property
-    def layer_to_blob(self):
-        if not hasattr(self, '_layer_to_blob'):
-            self._layer_to_blob = { l.layer_name: l.blob_name for l in self.config['layers'] }
-        return self._layer_to_blob
-
-    def _weight_child_neurons(self, top_layer_name, top_blob_name,
-                      bottom_layer_name, bottom_blob_name, act_id,
-                      num_children):
-        '''
-        Weight bottom blob neurons with respect to top blob activations.
-
-        Returns a 1d numpy array with one entry for each feature in the bottom blob.
-        Higher values indicate the top blob is more strongly connected to that feature.
-        '''
-        bottom_blob = self.net.blobs[bottom_blob_name]
-        top_blob = self.net.blobs[top_blob_name]
-        img_blob = self.net.blobs[self.config['image_blob_name']]
-
-        dag = self.dag
-        top_node = self._node_name([top_blob_name], [act_id])
-        layer_path = dag.node[top_node]['path'] + [top_layer_name, bottom_layer_name]
-        path_ids = dag.node[top_node]['path_ids'] + [act_id]
-        blob_path = [self.layer_to_blob[layer] for layer in layer_path]
-
-        ## set all but 1 pixel of the top diff to 0
-        #top_blob.diff[0] = 0
-        #if len(top_blob.data.shape) == 2:
-        #    top_blob.diff[0, act_id] = 1.0
-        #elif len(top_blob.data.shape) == 4:
-        #    spatial_max_idx = top_blob.data[0, act_id].argmax()
-        #    row, col = np.unravel_index(spatial_max_idx, top_blob.data.shape[2:])
-        #    top_blob.diff[0, act_id, row, col] = 1.0
-        #else:
-        #    raise Exception('source/target blobs should be shaped as ' \
-        #                    'if from a conv/fc layer')
-        #self.net.backward(start=top_layer_name, end=bottom_layer_name)
-
-        # backprop, re-focusing on particular features at each step
-        layer_path += [top_layer_name, bottom_layer_name]
-        inv_feature_paths = [[i] for i in path_ids]
-        for layer_i, tup in enumerate(zip(layer_path[:-1], layer_path[1:], inv_feature_paths, blob_path)):
-            top_layer, bottom_layer, feature_idxs, top_blob_name = tup
-            # filter activations along feature paths
-            if layer_i == 0:
-                self.set_max_pixel(0, feature_idxs[0], top_blob_name)
-            else:
-                self.filter_feature(0, feature_idxs[0], top_blob_name)
-            self.net.backward(start=top_layer, end=bottom_layer)
-
-        # compute weights between neurons (backward is needed to do deconvolution on the conv layers)
-        edge_weights = bottom_blob.data[0] * bottom_blob.diff[0]
-        if len(edge_weights.shape) == 3:
-            edge_weights = edge_weights.mean(axis=(1, 2))
-        assert len(edge_weights.shape) == 1
-        return abs(edge_weights)
-
-
-
-
-
-
-    
-    # Extras (TODO)
-
-
-
-
-
-    def _node_name(self, blob_path, act_ids):
-        return '-'.join([blob + '_' + str(act_id) for blob, act_id in zip(blob_path, act_ids)])
-
-    def tree(self, top_layer_id, act_id):
-        '''
-        Return a JSON serializable dictionary representing a hierarchy of
-        features with root given by the top layer and activation id.
-        '''
-        top_layer_name = self.config['layers'][top_layer_id]['layer_name']
-        top_blob_name = self.config['layers'][top_layer_id]['blob_name']
-        bottom_layer_id = self.config['layers']['prev_layer_id']
-        bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
-        bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
-
-        root = self._expand(top_layer_name, top_blob_name,
-                           bottom_layer_name, bottom_blob_name,
-                           act_id)
-        # TODO: don't allow arbitrary depth tree to be returned
-        successor_tree = nx.ego_graph(self.dag, root, radius=len(self.dag))
-        tree_dict = json_graph.tree_data(successor_tree, root, attrs={'children': 'children', 'id': 'name'})
-        return tree_dict
-
-
-
-    # TODO??? ... unnecessary
-    def node_from_path(self, path):
-        '''
-        Expand the tree to include this path and return info of the last node in the path.
-        '''
-        for info in path:
-            blob_name, act_id = info['blob_name'], info['act_id']
-            self._info_to_key
-
-        if node_id in tree:
-            return tree[node_id]
-
-        
-            return self._tracce
-
-
-
-        act_id = path['act_id']
-        top_layer_name = self.config['layers'][top_layer_id]['layer_name']
-        top_blob_name = self.config['layers'][top_layer_id]['blob_name']
-        bottom_layer_id = self.config['layers']['prev_layer_id']
-        bottom_layer_name = self.config['layers'][bottom_layer_id]['layer_name']
-        bottom_blob_name = self.config['layers'][bottom_layer_id]['blob_name']
-
-        root, expanded_nodes = self._expand(top_layer_name, top_blob_name,
-                     bottom_layer_name, bottom_blob_name, act_id, num_children, return_expanded=True)
-        expanded_data = [self.dag.node[node] for node in expanded_nodes]
-        return expanded_data
-
-
-    def expand_path(self, top_layer_name, top_blob_name,
-                bottom_layer_name, bottom_blob_name, act_id,
-                num_children=5, return_expanded=False):
-        '''
-        Compute weights between layers w.r.t. a particular activation.
-
-        Given a pair of layers and an activation to focus on in the
-        top layer, compute the edge weights between the activation
-        and all activations of the previous layer.
-        '''
-        dag = self.dag
-        top_node = self._node_name([top_blob_name], [act_id])
-        img_blob = self.net.blobs[self.config['image_blob_name']]
-        expanded_nodes = []
-
-        if top_node not in dag:
-            dag.add_node(top_node)
-            dag.node[top_node]['blob_name'] = top_blob_name
-            dag.node[top_node]['act_id'] = act_id
-            dag.node[top_node]['path'] = []
-            dag.node[top_node]['path_ids'] = []
-
-        # compute weights
-        edge_weights = self._compute_weights(top_layer_name, top_blob_name,
-                bottom_layer_name, bottom_blob_name, act_id, num_children)
-
-        # reconstruct strong connections
-        important_bottom_idxs = edge_weights.argsort()[::-1][:num_children]
-        recons = self.reconstruction([bottom_layer_name], [[i] for i in important_bottom_idxs])
-
-        # fill in the dag with edges from top to bottom and meta data
-        for k in range(num_children):
-            bottom_idx = important_bottom_idxs[k]
-            bottom_node = self._node_name([bottom_blob_name], [bottom_idx])
-
-            dag.add_edge(top_node, bottom_node, attr_dict={
-                'weight': edge_weights[bottom_idx],
-            })
-            dag.node[bottom_node]['blob_name'] = bottom_blob_name
-            dag.node[bottom_node]['act_id'] = bottom_idx
-            dag.node[bottom_node]['path'] = dag.node[top_node]['path'] + [top_layer_name]
-            dag.node[bottom_node]['path_ids'] = dag.node[top_node]['path_ids'] + [act_id]
-
-            expanded_nodes.append(bottom_node)
-
-        # return the node which was expanded
-        if return_expanded:
-            return top_node, expanded_nodes
-        else:
-            return top_node
-
-
-
-
 
 
 # TODO: refactor

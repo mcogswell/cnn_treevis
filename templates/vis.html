@@ -71,23 +71,23 @@
  * bottom left are hidden or not.
  */
 
-var margin = {top: nodeHeight/2 + 90, right: nodeWidth/2 + 200, bottom: 20, left: nodeWidth/2 + 200},
+var nodeHeight = 200,
+    nodeWidth = 200,
+    nodeMargin = {width: 30, height: 30},
+    margin = {top: nodeHeight/2 + 90, right: nodeWidth/2 + 200, bottom: 20, left: nodeWidth/2 + 200},
     width = screen.width - margin.right - margin.left,
-    height = screen.height - margin.top - margin.bottom;
+    height = screen.height - margin.top - margin.bottom,
+    node_counter = 0,
+    duration = 750;
 
-var node_counter = 0,
-    duration = 750,
-    root = {
+var root = {
       x0: height / 2,
       y0: 0,
       path_id: "{{root_path_id}}",
-      path: [["{{blob_name}}", {{act_id}}]],
-      blob_name: "{{blob_name}}",
-      act_id: {{act_id}}
-    },
-    nodeHeight = 200,
-    nodeWidth = 200,
-    nodeMargin = {width: 30, height: 30};
+      path: [["{{root_blob_name}}", {{root_act_id}}]],
+      blob_name: "{{root_blob_name}}",
+      act_id: {{root_act_id}}
+    };
 
 var tree = d3.layout.tree()
     //.size([height, width])

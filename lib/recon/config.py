@@ -11,7 +11,7 @@ net_config = {
     'mean_fname': 'caffe/data/ilsvrc12/imagenet_mean.binaryproto',
     'labels_fname': 'caffe/data/ilsvrc12/synset_words.txt',
     'image_blob_name': 'data',
-    'prob_blob_name': 'data',
+    'prob_blob_name': 'prob',
     'data_layer_name': 'data',
     'blob_multipliers': {
         'conv1': 1.0,

@@ -125,8 +125,9 @@ def json_tree_children(img_id):
     path = get_path(path_id)
     tree = get_vis_tree(net_id, img_id)
     children = tree.children_from_path(path)
-    child_path_ids = [{'path_id': get_path_id(child['path'])} for child in children]
-    return jsonify({'children': child_path_ids})
+    for child in children:
+        child['path_id'] = get_path_id(child['path'])
+    return jsonify({'children': children})
 
 @app.route('/vis/<path:img_id>/tree/reconstruction')
 def json_tree_reconstruction(img_id):
