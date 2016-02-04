@@ -105,3 +105,10 @@ TODOs / Features
 
 * Allow drilling up in the hierarchy as well as drilling down.
 
+
+TODOs / Release
+===
+
+* Read through and delete notes.md
+
+* Make both net and image context apparent in URL
