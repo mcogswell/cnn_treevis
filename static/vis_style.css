@@ -22,23 +22,38 @@
   pointer-events: none;
 }
 
-.base_div {
+.base_div_left {
   position: fixed;
   bottom: 10px;
   left: 10px;
   z-index: -1;
 }
 
-.base_div img {
+.base_div_left img {
   float: left;
   margin-right: 10px;
   width: 150px;
   height: 150px;
 }
 
-.base_div div {
+.base_div_left div {
   float: right;
   font: 13px sans-serif;
+}
+
+.base_div_right {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: -1;
+}
+
+.base_div_right div {
+  float: left;
+  font: 13px sans-serif;
+  margin-left: 10px;
+  width: 350px;
+  height: 120px;
 }
 
 .noselect {
@@ -52,7 +67,6 @@
 
 .button rect {
   fill: white;
-  fill-opacity: 1;
   stroke: black;
   stroke-width: 1pt;
 }

@@ -9,16 +9,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.5/d3.min.js"></script>
 <script>
 
-/*
- * Interface comments:
- * There are two (hidden) buttons in the top right of each reconstruction.
- * The top right one removes the corresponding node.
- * The top middle one (to the right of the conv5_159 text) toggles
- * the state of the corresponding feature visualization.
- * Pressing the 'h' key toggles whether the image and labels in the
- * bottom left are hidden or not.
- */
-
 var nodeHeight = 200,
     nodeWidth = 200,
     nodeMargin = {width: 30, height: 30},
@@ -48,10 +38,23 @@ var img_id = "{{img_id}}",
     base_url = "/vis/" + img_id,
     img_url = "/vis/{{img_id}}/img.jpg",
     img_div = d3.select("body").append("div")
-        .attr("class", "base_div"),
+        .attr("class", "base_div_left"),
     img = img_div.append("img")
         .attr("src", img_url),
     label_p = img_div.append("div");
+
+var interface_div = d3.select("body").append("div")
+        .attr("class", "base_div_right")
+        .append("div")
+        .html("\
+<h3>Interface</h3> \
+The two buttons at the top of each node either <b>remove the \
+node</b> (right) or <b>toggle the feature visualization</b>. \
+Pressing the 'h' key <b>toggles the image</b> and labels at the \
+bottom left and pressing 'b' <b>shows and hides the buttons</b>");
+
+
+    
 
 d3.select("body")
     .on("keydown", function() {
@@ -66,6 +69,16 @@ d3.select("body")
                     return 1.0;
                 }
             });
+        }
+        else if (d3.event.keyCode == 66) {
+            var button = d3.selectAll(".button");
+            var opacity = button.attr("opacity");
+            if (opacity == 0) {
+                button.attr("opacity", 1);
+            }
+            else {
+                button.attr("opacity", 0);
+            }
         }
     });
 
