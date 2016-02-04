@@ -12,7 +12,7 @@ release TODOs
 
 * Try fooling around with masking intensity options
 
-* go through TODOs in code
+* finish README
 
 
 
@@ -84,16 +84,18 @@ which must be generated offline with a command line utility.
 
 
 
-TODOs / Bugs
+TODOs
 ===
 
-* Note that caffe must be build without CuDNN support or the ReLU needs to
+* (Bug) Note that caffe must be build without CuDNN support or the ReLU needs to
   be changed to use my implementation. A better way to implement this would
   be in the fashion of yosinski's deconv implementation.
 
-
-TODOs / Features
-===
-
 * Allow drilling up in the hierarchy as well as drilling down.
 
+* Implement efficient batch computation. Have VisTree run an event loop.
+  Whenever a feature vis is requested it enqueues its path
+  and waits for that vis to be computed. Each job in the event loop
+  dequeues a whole batch from the queue and runs it. Once a specific path's
+  job gets to execute it's likely to have already been handled by some other
+  job, so it doesn't have to do any work. Tricky, but fun... use asyncio

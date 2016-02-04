@@ -130,9 +130,7 @@ def vis_labels(img_id):
 
 
 ######################################
-# Interact with the tree of related gradient images.
-# The root of this tree is the gradient image of a particular neuron.
-# TODO: describe more
+# Interact with the tree of gradient images. See `VisTree`
 
 @app.route('/vis/<path:img_id>/tree/children')
 def json_tree_children(img_id):
@@ -194,7 +192,6 @@ def get_vis_tree(net_id, img_id):
     if key in _vis_trees:
         return _vis_trees[key]
     else:
-        # TODO: cleaner
         img_fname = pth.join('data/gallery/', img_id)
         vis_tree = VisTree(net_id, img_fname)
         _vis_trees[key] = vis_tree

@@ -14,8 +14,6 @@ from jinja2 import Template
 import caffe
 import caffe.proto.caffe_pb2 as cpb
 
-from cogswell import keyboard
-
 from recon import *
 from recon.config import config
 
@@ -55,7 +53,6 @@ def main():
     elif main_args['graph']:
         blob_names = main_args['<blob_names>']
         d = rec.graph()
-        keyboard('graph')
         with open('/tmp/graph.json', 'w') as f:
             json.dump(d, f)
     elif main_args['bigraph']:

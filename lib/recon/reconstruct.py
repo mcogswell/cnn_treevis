@@ -41,7 +41,7 @@ logger = logging.getLogger(config.logger.name)
 # string identifier. This makes it easier to handle paths as identifiers
 # in javascript. I can pass around one string instead of a JSON list.
 # Especially important for <img src="GET_url?path_id=">
-# TODO: now assume there is a 1-1 mapping
+# NOTE: this assumes a bijection between path_ids and paths
 _paths_by_id = {}
 def _check_path(path):
     for node in path:
@@ -88,21 +88,19 @@ def _convert_relus(in_param, relu_type=relu_backward_types.GUIDED):
 
 class VisTree(object):
     '''
-    Keep track of explored reconstructions and allow semi-efficient exploration of the space.
-    Try to answer the question "How does this network interpret this image?"
+    Keep track of explored reconstructions and allow efficient exploration
+    of the space by reducing duplication of caffe computation.
 
-    This actually can keep track of a forest of visualizations. Each tree is rooted at
-    a particular ZF style gradient vis. New nodes are created by expanding an existing
-    node. This creates some children which visualize gradients backpropped from the root,
-    but with the feature map blobs of the children further masked similar to how the
-    root feature map is masked. Keeping track of the nodes in this tree allows visualizations
-    to be computed efficiently in batches instead of one at a time.
+    NOTE: ZF means Zeiler/Fergus in reference to "Visualizing and Understanding Convolutional Networks."
 
-    TODO: efficient batch computation doesn't always happen yet (e.g. overview page)
+    Each node of the tree corresponds to a generalized ZF style visualization.
+    A root is exactly a ZF style vis, but it's children/descendants aren't quite.
+    Instead of masking all but one pixel in a feature map, a descendant masks all
+    gradient images between it and the root in a way that emphasizes features
+    connected to the root. For convenience, one of these nodes is indicated by the
+    full `path` from root to descendant.
 
-    NOTE: ZF means Zeiler/Fergus in reference to "Visualizing and Understanding Convolutional Networks"
-
-    TODO: note that all operations do not modify forward data, so only calls to backward need be made
+    NOTE: Operations do not modify forward data, so only calls to backward need be made.
     '''
 
     def __init__(self, net_id, img_fname):
@@ -163,11 +161,8 @@ class VisTree(object):
         # cache the visualization
         img_blob = self.net.blobs[self.config['image_blob_name']]
         reconstruction = np.copy(img_blob.diff[0, :, :, :])
-        # TODO: add bounding box back in
-        #bbox = self._to_bbox(reconstruction)
         reconstruction = self._showable(reconstruction)
         path_id = get_path_id(path)
-        # TODO: it might be a good idea to put this in the graph, but for now not, because it's not JSON serializable
         self._reconstructions[path_id] = {
             'reconstruction': reconstruction,
             #'bbox': bbox,
@@ -182,7 +177,7 @@ class VisTree(object):
         if len(blob.data.shape) == 2:
             features = blob.data
         elif len(blob.data.shape) == 4:
-            # TODO: might want to do this in different ways
+            # NOTE: might want to do this in different ways
             features = blob.data.max(axis=(2, 3))
         return list(features[0].argsort()[::-1])
 
@@ -227,8 +222,9 @@ class VisTree(object):
             top_act_id = self._node_to_act_id(top_node)
             is_last_node = (path_i + 1 == len(path))
             # run filtering and backprop
+            # NOTE: Batches might have different layers to start from,
+            # so this check will be insufficient when that feature is implemented.
             if path_i == 0:
-                # TODO: batches might have different layers to start from
                 self._set_max_pixel(example_i, top_act_id, top_blob_name)
             else:
                 self._filter_feature(example_i, top_act_id, top_blob_name)
@@ -242,7 +238,7 @@ class VisTree(object):
         blob = self.net.blobs[blob_name]
         img = blob.diff[example_i]
         total = abs(img).sum()
-        # TODO: configurable multiplier... also do this sum over all features
+        # NOTE: This should be configurable... fool with it some more
         total_feature = abs(img[feature_idx]).sum()
         mult = total / total_feature
         #mult = self.config.blob_multipliers[blob_name]
@@ -313,7 +309,7 @@ class VisTree(object):
             img_blob.data[i] = img_blob.data[0]
 
     def _showable(self, img, rescale=False):
-        # TODO: don't always assume images in the net are BGR
+        # NOTE: assumes images in the net are BGR
         img = img.transpose([1, 2, 0])
         img = (img + self.mean)[:, :, ::-1]
         if rescale and (img.min() < 0 or 255 < img.max()):
@@ -344,7 +340,6 @@ class VisTree(object):
         Takes a network spec file and returns a NamedTemporaryFile which
         contains the modified spec with ReLUs appropriate for visualization.
         '''
-        # TODO: also accept file objects instead of just names?
         net_param = _convert_relus(net_param, relu_type=self.config.relu_type)
 
         tmpspec = tempfile.NamedTemporaryFile(delete=False)
@@ -374,7 +369,6 @@ def build_max_act_db(blob_name, config, k=5):
         Takes a network spec file and returns a NamedTemporaryFile which
         contains the modified spec with ReLUs appropriate for visualization.
         '''
-        # TODO: also accept file objects instead of just names?
         net_param = _convert_relus(net_param, relu_type=config.relu_type)
 
         tmpspec = tempfile.NamedTemporaryFile(delete=False)
@@ -409,7 +403,7 @@ def build_max_act_db(blob_name, config, k=5):
         return '{}_{}'.format(blob_name, feature_idx)
 
     def _showable(img, rescale=False):
-        # TODO: don't always assume images in the net are BGR
+        # NOTE: assumes images in the net are BGR
         img = img.transpose([1, 2, 0])
         img = (img + mean)[:, :, ::-1]
         img = img.clip(0, 255).astype(np.uint8)

@@ -17,10 +17,10 @@ def load_ilsvrc12_labels(fname):
         return [line.strip() for line in f]
 
 def load_mean_image(fname):
+    # NOTE: always assumes BGR
     bp = cpb.BlobProto()
     with open(fname, 'r') as f:
         bp.ParseFromString(f.read())
-    # TODO: don't always assume BGR
     mean = np.array(bp.data).reshape([3, 256, 256]).transpose([1, 2, 0])
     return mean[15:-14, 15:-14]
 
@@ -45,5 +45,4 @@ def setup_logging(name, use_stdout=False):
         if use_stdout:
             logger.addHandler(stdout_handler)
     logger = logging.getLogger(config.logger.name)
-    # TODO: log rotation (python should be able to do this)
 
