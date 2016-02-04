@@ -103,13 +103,15 @@ class VisTree(object):
     NOTE: Operations do not modify forward data, so only calls to backward need be made.
     '''
 
-    def __init__(self, net_id, img_fname):
+    def __init__(self, net_id, img_fname, gpu_id):
         '''
         # Args
             net_id: Network to inspect (lib/recon/config.py)
             img_fname: Image to inspect (data/gallery/)
+            gpu_id: Id of GPU to use
         '''
         self.net_id = net_id
+        self.gpu_id = gpu_id
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=False)
         self.mean = load_mean_image(self.config.mean_fname)
@@ -347,11 +349,12 @@ class VisTree(object):
             tmpspec.write(text_format.MessageToString(net_param))
         tmpspec.close()
 
+        caffe.set_device(self.gpu_id)
         return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
 
 
 # TODO: refactor
-def build_max_act_db(blob_name, config, k=5):
+def build_max_act_db(blob_name, config, gpu_id, k=5):
     # don't use self.net, which a deploy net (data comes from python)
 
     def _load_param(with_data=False):
@@ -376,6 +379,7 @@ def build_max_act_db(blob_name, config, k=5):
             tmpspec.write(text_format.MessageToString(net_param))
         tmpspec.close()
 
+        caffe.set_device(gpu_id)
         return caffe.Net(tmpspec.name, config.model_param, caffe.TEST)
 
     def _get_blob_layer(net_param, blob_name):

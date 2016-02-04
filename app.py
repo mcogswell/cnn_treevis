@@ -193,7 +193,7 @@ def get_vis_tree(net_id, img_id):
         return _vis_trees[key]
     else:
         img_fname = pth.join('data/gallery/', img_id)
-        vis_tree = VisTree(net_id, img_fname)
+        vis_tree = VisTree(net_id, img_fname, gpu_id)
         _vis_trees[key] = vis_tree
         return vis_tree
 
@@ -202,15 +202,17 @@ def get_vis_tree(net_id, img_id):
 def main():
     '''
     Usage:
-        app.py <net_id> [--debug]
+        app.py <net_id> [--debug] [--gpu-id=<id>]
 
     Options:
-        --debug     Launch the app in debug mode? [default: false]
+        --debug         Launch the app in debug mode? [default: false]
+        --gpu-id=<id>   Id of GPU to use [default: 0]
     '''
-    global net_id
+    global net_id, gpu_id
     import docopt, textwrap
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))
     net_id = main_args['<net_id>']
+    gpu_id = int(main_args['--gpu-id'])
 
     hostname = socket.gethostname()
     app.run(host=hostname, debug=main_args['--debug'])

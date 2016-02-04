@@ -3,8 +3,6 @@ release TODOs
 
 * Make both net and image context apparent in URL
 
-* Enable specification of GPU
-
 * Can I clone the repo and generate everything required from just ilsvrc data?
     * make this one command
 
