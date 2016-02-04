@@ -103,15 +103,17 @@ class VisTree(object):
     NOTE: Operations do not modify forward data, so only calls to backward need be made.
     '''
 
-    def __init__(self, net_id, img_fname, gpu_id):
+    def __init__(self, net_id, img_fname, gpu_id, multiplier_mode='auto_1'):
         '''
         # Args
             net_id: Network to inspect (lib/recon/config.py)
             img_fname: Image to inspect (data/gallery/)
             gpu_id: Id of GPU to use
+            multiplier_mode: see self._filter_feature()
         '''
         self.net_id = net_id
         self.gpu_id = gpu_id
+        self.multiplier_mode = multiplier_mode
         self.config = config.nets[self.net_id]
         self.net_param = self._load_param(with_data=False)
         self.mean = load_mean_image(self.config.mean_fname)
@@ -229,25 +231,38 @@ class VisTree(object):
             if path_i == 0:
                 self._set_max_pixel(example_i, top_act_id, top_blob_name)
             else:
-                self._filter_feature(example_i, top_act_id, top_blob_name)
+                self._filter_feature(example_i, top_act_id, top_blob_name, multiplier_mode=self.multiplier_mode)
             if not is_last_node:
                 bottom_node = path[path_i + 1]
                 bottom_id = self._node_to_layer_id(bottom_node)
                 bottom_layer_name = layers[bottom_id]['layer_name']
                 self.net.backward(start=top_layer_name, end=bottom_layer_name)
 
-    def _filter_feature(self, example_i, feature_idx, blob_name):
+    def _filter_feature(self, example_i, feature_idx, blob_name, multiplier_mode):
+        '''
+        Mask a diff
+
+        # Args
+            example_i: Index of example to mask
+            feature_idx: Index of feature to keep
+            blob_name: Name of blob to mask
+            multiplier_mode: How should the gradient be scaled?
+                auto_1: Set the magnitude of single feature gradient equal
+                    to the magnitude of all gradients before masking.
+                man_1: Look up the gradient magnitude in self.config.
+        '''
         blob = self.net.blobs[blob_name]
-        img = blob.diff[example_i]
-        total = abs(img).sum()
-        # NOTE: This should be configurable... fool with it some more
-        total_feature = abs(img[feature_idx]).sum()
-        mult = total / total_feature
-        #mult = self.config.blob_multipliers[blob_name]
-        assert mult >= 1.0
+        if multiplier_mode == 'auto_1':
+            total = abs(blob.diff[example_i]).sum()
+            total_idx = abs(blob.diff[example_i, feature_idx]).sum()
+            mult = total / total_idx
+            assert mult >= 1.0
+        elif multiplier_mode == 'man_1':
+            mult = self.config.blob_multipliers[blob_name]
+        else:
+            raise Exception('unknown multiplier_mode {}'.format(multiplier_mode))
         blob.diff[example_i, :feature_idx] = 0
         blob.diff[example_i, feature_idx+1:] = 0
-        #blob.diff[example_i] *= 20 * mult / total_feature
         blob.diff[example_i] *= mult
 
     def _set_max_pixel(self, example_i, feature_idx, blob_name):

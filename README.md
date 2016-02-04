@@ -1,14 +1,10 @@
 release TODOs
 ===
 
-* Make both net and image context apparent in URL
-
 * Can I clone the repo and generate everything required from just ilsvrc data?
     * make this one command
 
 * create gifs and put in README
-
-* Try fooling around with masking intensity options
 
 * finish README
 
@@ -97,3 +93,6 @@ TODOs
   dequeues a whole batch from the queue and runs it. Once a specific path's
   job gets to execute it's likely to have already been handled by some other
   job, so it doesn't have to do any work. Tricky, but fun... use asyncio
+
+* Make both net and image context apparent in URL. There should also be a way to
+  select a network from a list of networks that can be visualized.

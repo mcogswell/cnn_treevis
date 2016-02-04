@@ -7,7 +7,7 @@ relu_backward_types_inv = { v: k for k, v in relu_backward_types.iteritems()}
 
 net_config = {
     'model_param': 'caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
-    'batch_size': 20,
+    'batch_size': 1,
     'mean_fname': 'caffe/data/ilsvrc12/imagenet_mean.binaryproto',
     'labels_fname': 'caffe/data/ilsvrc12/synset_words.txt',
     'image_blob_name': 'data',
