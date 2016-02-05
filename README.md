@@ -1,13 +1,13 @@
 release TODOs
 ===
 
-* Can I clone the repo and generate everything required from just ilsvrc data?
-    * make this one command
-
 * create gifs and put in README
 
 * finish README
 
+* filter cvmlp specific paths from repo?
+
+* search the whole repo for TODOs
 
 
 ---
@@ -16,6 +16,31 @@ release TODOs
 This is a pre-alpha quality release of visualization software for Convolutional Neural Networks (CNNs).
 Its goal is to help the user understand the hierarchy of parts encoded by a CNN through
 visualization of the parts and their relation to existing low and high level intutions.
+
+
+Running the Server
+===
+
+Starting the visualizations requires canonical feature images to be cached first.
+This can be done as follows:
+```
+$ git clone --recursive git@bitbucket.org:mcogswell/parvis_cnn.git
+$ cd parvis_cnn/
+$ ./setup.sh
+$ # Build caffe with python support (http://caffe.berkeleyvision.org/installation.html)
+$ # make sure the python module is importable (e.g., $ export PYTHONPATH=$PYTHONPATH:./caffe/python/)
+$ ./scripts/cache_features_caffenet_imnet_val.sh
+```
+
+To run the server:
+```
+python app.py caffenet_imnet_val --gpu-id <id>
+```
+
+Now go to [http://localhost:5000/gallery](http://localhost:5000/gallery) in your browser and start exploring.
+
+
+
 
 Application Overview
 ===
@@ -71,10 +96,6 @@ Cached Vis Generator
 Some parts of the application are generated before runtime and cached
 as static content. Currently, this only includes neuron-wise visualizations,
 which must be generated offline with a command line utility.
-
-
-
-
 
 
 
