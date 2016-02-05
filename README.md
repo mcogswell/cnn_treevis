@@ -87,8 +87,7 @@ All of the Zeiler/Fergus or Guided Backprop based images which are specific to t
 example image are generated at runtime. Each vis page is associated with a `VisTree`
 instance (`lib/recon/reconstruct.py`) which stores and computes vis components for one image.
 
-Cached Vis Generator
----
+###Cached Vis Generator
 Some parts of the application are generated before runtime and cached
 as static content. Currently, this only includes neuron-wise visualizations,
 which must be generated offline with a command line utility (see `scripts/cache_features_caffenet_imnet_val.sh`).
