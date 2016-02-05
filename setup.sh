@@ -12,5 +12,3 @@ cd caffe/
 ./scripts/download_model_binary.py models/bvlc_reference_caffenet/
 ./data/ilsvrc12/get_ilsvrc_aux.sh
 cd ../
-
-./scripts/cache_features_caffenet_imnet_val.sh
