@@ -21,25 +21,35 @@ visualization of the parts and their relation to existing low and high level int
 Running the Server
 ===
 
-Starting the visualizations requires canonical feature images to be cached first.
-This can be done as follows:
+1. Setup directories and leave a pointer to the imagenet val set (see `setup.sh`).
 ```
 $ git clone --recursive git@bitbucket.org:mcogswell/parvis_cnn.git
 $ cd parvis_cnn/
 $ ./setup.sh
-$ # Build caffe with python support (http://caffe.berkeleyvision.org/installation.html)
-$ # make sure the python module is importable (e.g., $ export PYTHONPATH=$PYTHONPATH:./caffe/python/)
+```
+
+2. Build caffe with python support (http://caffe.berkeleyvision.org/installation.html).
+Make sure the python module is importable from the cloned directory.
+```
+$ cd caffe/
+$ make all py
+$ export PYTHONPATH=$PYTHONPATH:./caffe/python/  # allow importing caffe from the cloned directory
+```
+
+3. Cache feature visualizations. This step can take a long
+time (a couple hours), but you can make it closer to an hour
+if you have multiple GPUs. To do so see the note at the
+top of the script.
+```
 $ ./scripts/cache_features_caffenet_imnet_val.sh
 ```
 
-To run the server:
+4. To run the server:
 ```
 python app.py caffenet_imnet_val --gpu-id <id>
 ```
 
-Now go to [http://localhost:5000/gallery](http://localhost:5000/gallery) in your browser and start exploring.
-
-
+5. Try the visualization: go to [http://localhost:5000/gallery](http://localhost:5000/gallery) in your browser and start exploring.
 
 
 Application Overview
