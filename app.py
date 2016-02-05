@@ -206,7 +206,7 @@ def main():
 
     Options:
         --debug                 Launch the app in debug mode? [default: false]
-        --gpu-id=<id>           Id of GPU to use [default: 0]
+        --gpu-id=<id>           Id of GPU to use or -1 for CPU [default: -1]
         --mult-mode=<meth>    Multiplier mode (See VisTree()) [default: auto_1]
     '''
     global net_id, gpu_id, mult_mode

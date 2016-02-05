@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import caffe
 
-from recon.reconstruct import build_max_act_db
+from recon.reconstruct import FeatBuilder
 import recon.config
 from recon import util
 
@@ -24,16 +24,11 @@ def main():
     top_k = int(main_args['--topk'])
     use_stdout = main_args['--stdout']
 
-    if gpu_id < 0:
-        caffe.set_mode_cpu()
-    else:
-        caffe.set_mode_gpu()
-        caffe.set_device(gpu_id)
-
     util.setup_logging('{}_{}'.format(net_id, blob_name), use_stdout=use_stdout)
 
     config = recon.config.config.nets[net_id]
-    build_max_act_db(blob_name, config, k=top_k)
+    builder = FeatBuilder(config, gpu_id)
+    builder.build_max_act_db(blob_name, k=top_k)
 
 if __name__ == '__main__':
     main()

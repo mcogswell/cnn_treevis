@@ -7,7 +7,8 @@ relu_backward_types_inv = { v: k for k, v in relu_backward_types.iteritems()}
 
 net_config = {
     'model_param': 'caffe/models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel',
-    'batch_size': 1,
+    # NOTE: this is hard coded in the net specs in specs/
+    'batch_size': 20,
     'mean_fname': 'caffe/data/ilsvrc12/imagenet_mean.binaryproto',
     'labels_fname': 'caffe/data/ilsvrc12/synset_words.txt',
     'image_blob_name': 'data',
@@ -62,20 +63,6 @@ config = edict({
         'spec_nodata': 'specs/caffenet_deploy.prototxt',
         'num_examples': 1281167,
     }, **net_config),
-    'decov_nodrop_val': dict(net_config,**{
-        'relu_type': relu_backward_types.GUIDED,
-        'spec_wdata': 'specs/alexnet_val.prototxt',
-        'spec_nodata': 'specs/alexnet_deploy.prototxt',
-        'num_examples': 50000,
-        'model_param': 'data/models/alexnet_xcov67_xw.001_nodrop_snap_iter_450000.caffemodel',
-    }),
-    'nodecov_val': dict(net_config,**{
-        'relu_type': relu_backward_types.GUIDED,
-        'spec_wdata': 'specs/alexnet_val.prototxt',
-        'spec_nodata': 'specs/alexnet_deploy.prototxt',
-        'num_examples': 50000,
-        'model_param': 'data/models/alexnet_base_snap_iter_450000.caffemodel',
-    }),
 }
 }) 
 
