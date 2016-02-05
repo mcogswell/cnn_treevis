@@ -10,10 +10,10 @@ layer {
   transform_param {
     mirror: false
     crop_size: 227
-    mean_file: "/home/cogswell/projects/decornets/caffe_imnet/models/experiments/data/imagenet_mean.binaryproto"
+    mean_file: "caffe/data/ilsvrc12/imagenet_mean.binaryproto"
   }
   data_param {
-    source: "/home/cogswell/projects/decornets/caffe_imnet/models/experiments/data/ilsvrc12_val_lmdb"
+    source: "data/ilsvrc12_val_lmdb"
     batch_size: 20
     backend: LMDB
   }

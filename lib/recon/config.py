@@ -40,7 +40,7 @@ net_config = {
 config = edict({
 'logger': {
     'dir': 'logs/',
-    'name': 'parvis',
+    'name': 'cnn_treevis',
 },
 'lmdb_map_size': 1000 * (1024**3),
 'nets': {
