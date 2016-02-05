@@ -5,10 +5,7 @@ release TODOs
 
 * finish README
 
-* filter cvmlp specific paths from repo?
-
-* search the whole repo for TODOs
-
+* change name
 
 ---
 
@@ -23,9 +20,9 @@ Setting Up and Running the Server
 
 1. Setup directories and leave a pointer to the imagenet val set (see `setup.sh`).
 
-        $ git clone --recursive git@bitbucket.org:mcogswell/parvis_cnn.git
-        $ cd parvis_cnn/
-        $ ./setup.sh
+        $ git clone --recursive git@github.com:mcogswell/cnn_treevis.git
+        $ cd cnn_treevis/
+        $ ./setup.sh  # set your own IMNET_VAL_LMDB
 
 2. Build caffe with python support (http://caffe.berkeleyvision.org/installation.html).
    Make sure the python module is importable from the cloned directory.
@@ -123,3 +120,5 @@ TODOs
 
 * Make both net and image context apparent in URL. There should also be a way to
   select a network from a list of networks that can be visualized.
+
+* Clean up FeatBuilder code.
