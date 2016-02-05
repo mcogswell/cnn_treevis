@@ -419,10 +419,10 @@ class FeatBuilder(object):
         return caffe.Net(tmpspec.name, self.config.model_param, caffe.TEST)
 
     def num_features(self, blob_name):
-        data_net_param = _load_param(with_data=True)
-        net = _load_net(data_net_param)
+        data_net_param = self._load_param(with_data=True)
+        net = self._load_net(data_net_param)
         blob = net.blobs[blob_name]
-        return blob.shape[1]
+        return blob.data.shape[1]
 
     def build_max_act_db(self, blob_name, k=5):
         # don't use self.net, which a deploy net (data comes from python)
@@ -608,14 +608,17 @@ class FeatBuilder(object):
 
 
     def canonical_image(self, blob_name, feature_idx, k, tmp_fname):
+        # load the image and reconstruction
+        act_env = lmdb.open(self.config.max_activation_dbname, map_size=recon.config.config.lmdb_map_size)
         act_key = self._get_key(blob_name, feature_idx)
-        with self.act_env.begin() as txn:
+        with act_env.begin() as txn:
             val = txn.get(act_key)
             if val == None:
                 raise Exception('activation for key {} not yet stored'.format(act_key))
             activations = pkl.loads(val)[-k:]
         img_patches = []
         rec_patches = []
+
         # crop patches from the image and reconstruction
         for i, act in enumerate(activations):
             rec = act['reconstruction']
@@ -627,7 +630,7 @@ class FeatBuilder(object):
             img_patches.append(img)
             rec_patches.append(rec)
 
-        # display the patches in a grid
+        # display the patches in a grid, then save to a file
         patch_size = [0, 0]
         for img, rec in zip(img_patches, rec_patches):
             patch_size[0] = max(img.shape[0], patch_size[0])
