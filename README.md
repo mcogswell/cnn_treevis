@@ -1,11 +1,7 @@
 release TODOs
 ===
 
-* create gifs and put in README
-
 * finish README
-
-* change name
 
 ---
 
@@ -28,7 +24,7 @@ Setting Up and Running the Server
    Make sure the python module is importable from the cloned directory.
 
         $ cd caffe/
-        $ make all py
+        $ make all py  # do NOT use CuDNN! (see TODOs below)
         $ export PYTHONPATH=$PYTHONPATH:./caffe/python/  # allow importing caffe from the cloned directory
 
 3. Cache feature visualizations. This step can take a long
@@ -104,6 +100,11 @@ which must be generated offline with a command line utility.
 
 TODOs
 ===
+
+* Figure out a better way of re-weighting gradients filtered through a vis path.
+  Right now expanding the hierarchy from fc8 to conv1 leads to oversaturated
+  images deeper in the tree. There should be a way to adjust gradient magnitudes
+  to prevent oversaturation.
 
 * (Bug) Note that caffe must be build without CuDNN support or the ReLU needs to
   be changed to use my implementation. A better way to implement this would
