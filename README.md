@@ -10,6 +10,8 @@ This is a pre-alpha quality release of visualization software for Convolutional 
 Its goal is to help the user understand the hierarchy of parts encoded by a CNN through
 visualization of the parts and their relation to existing low and high level intutions.
 
+![Demo: How does a CNN see fur?](cnn_treevis_demo.gif)
+
 
 Setting Up and Running the Server
 ===
