@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <head>
 <meta charset="utf-8">
-<title>Tree Example</title>
+<title>Vis {{root_path_id}} {{img_id}}</title>
 <link rel="stylesheet" href="/static/vis_style.css">
 </head>
 <body>
@@ -332,9 +332,11 @@ function click(d) {
   if (d.children) {
     d._children = d.children;
     d.children = null;
+    update(d);
   } else if (d._children) {
     d.children = d._children;
     d._children = null;
+    update(d);
   } else {
     d3.json(base_url + "/tree/children?path_id=" + d.path_id, function(error, obj) {
         if (error) throw error;
