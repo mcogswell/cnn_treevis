@@ -93,3 +93,15 @@ as static content. Currently, this only includes neuron-wise visualizations,
 which must be generated offline with a command line utility (see `scripts/cache_features_caffenet_imnet_val.sh`).
 See the `FeatBuilder` class in `lib/recon/reconstruct.py` for the implementation.
 
+Visualization Types
+---
+
+A couple types of "gradient" visualizations are available. See `lib/recon/config.py`
+for examples of nets that use different types:
+
+* `DECONV`: Restrict ReLU gradient according to [Zeiler and Fergus](http://arxiv.org/abs/1311.2901).
+* `GUIDED`: Restrict ReLU gradient even more according to [Striving for Simplicity](http://arxiv.org/abs/1412.6806).
+* `GUIDED_NEG`: This is an experiment with which parts of the ReLU gradient work well.
+    The method only passes gradients back through a ReLU when the top part is negative
+    (see ReLU gradient implementation in the caffe submodule).
+    The results are slightly sharper, but pretty much the same as `GUIDED`.
