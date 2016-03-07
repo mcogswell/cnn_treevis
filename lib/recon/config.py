@@ -57,6 +57,12 @@ config = edict({
         'spec_nodata': 'specs/caffenet_deploy.prototxt',
         'num_examples': 50000,
     }, **net_config),
+    'caffenet_imnet_val_neg': dict({
+        'relu_type': relu_backward_types.GUIDED_NEG,
+        'spec_wdata': 'specs/caffenet_imnet_val.prototxt',
+        'spec_nodata': 'specs/caffenet_deploy.prototxt',
+        'num_examples': 50000,
+    }, **net_config),
     'caffenet_imnet_train': dict({
         'relu_type': relu_backward_types.GUIDED,
         'spec_wdata': 'specs/caffenet_imnet_train.prototxt',

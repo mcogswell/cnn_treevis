@@ -20,14 +20,18 @@ import recon.config
 
 def main():
     '''
+    Generate and save one representative image per neuron.
+
     Usage:
-        cache_feats.py <net_id> <blob_name> [--topk <K>] [--nfeatures <N>] [--stdout] [--gpu-id <id>]
+        cache_feats.py <net_id> <blob_name> [--topk <K>] [--nfeatures <N>]
+            [--stdout] [--gpu-id <id>] [--feat-dir <dir>]
 
     Options:
         --topk <K>         How many images to display at once? [default: 9]
         --nfeatures <N>    Only visualize the first N features [default: -1]
         --stdout           Log info to stdout alongside log file [default: false]
         --gpu-id <id>      Id of gpu to use [default: -1]
+        --feat-dir <dir>   Directory to store feature images in [default: data/feat/]
     '''
     import docopt, textwrap
     main_args = docopt.docopt(textwrap.dedent(main.__doc__))
@@ -37,6 +41,7 @@ def main():
     gpu_id = int(main_args['--gpu-id'])
     config = recon.config.config.nets[net_id]
     builder = FeatBuilder(config, gpu_id)
+    feat_dir = main_args['--feat-dir']
 
     util.setup_logging('test_{}'.format(net_id), use_stdout=use_stdout)
 
@@ -46,7 +51,7 @@ def main():
     if nfeatures == -1:
         nfeatures = builder.num_features(blob_name)
     for i in range(nfeatures):
-        builder.canonical_image(blob_name, i, topk, 'data/feat/{}_feat{}.jpg'.format(blob_name, i))
+        builder.canonical_image(blob_name, i, topk, pth.join(feat_dir, '{}_feat{}.jpg'.format(blob_name, i)))
 
 
 if __name__ == '__main__':
