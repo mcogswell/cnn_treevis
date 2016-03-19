@@ -11,6 +11,8 @@ in the context of one image. The demo below starts with a Zeiler/Fergus style vi
 of a neuron that detects fur in conv4 then relates that neuron to others in conv3, conv2, and conv1.
 Hopefully this builds intuition about how features combine to form higher level representations.
 
+Update: For more details, see my blog about this project [here](http://mcogswell.io/why_cat_2/)!
+
 ![Demo: How does a CNN see fur?](cnn_treevis_demo.gif)
 
 
